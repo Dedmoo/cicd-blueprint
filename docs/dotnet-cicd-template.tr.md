@@ -167,7 +167,7 @@ Bu şablonu kullanmak için **hiçbir dosyayı düzenlemezsiniz.** Uygulamaya ö
    ```
    (Birden çok servis için `SERVICES` çok satırlı verilebilir.)
 6. **İlk CI'ı çalıştırın:** `main`'e push edin; yeşil olduğunu görün.
-7. **İlk dağıtımı yapın:** Actions → Deploy → açıklama girin, onaylayın.
+7. **İlk dağıtımı yapın:** Actions → **Production Deploy** → açıklama girin, onaylayın.
 
 ## 7. Farklı Teknoloji Yığınları
 

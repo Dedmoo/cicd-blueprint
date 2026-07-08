@@ -45,7 +45,7 @@
 | `SSH_HOST` | Remote | `192.168.1.100` veya `myserver.com` | Hedef sunucunun IP veya hostname'i. Yalnızca `DEPLOY_TARGET=remote` için gerekli. |
 | `SSH_USER` | Remote | `deploy` | SSH kullanıcı adı. Yalnızca `DEPLOY_TARGET=remote` için gerekli. |
 | `SSH_PORT` | Hayır | `22` | SSH portu. Varsayılan `22`. |
-| `SSH_KNOWN_HOSTS` | Önerilir | `myserver.com ssh-ed25519 AAAA...` | Sunucunun host key satırı. `ssh-keyscan -p 22 <SSH_HOST>` çıktısını buraya yapıştırın. Bu değer olmazsa her adımda `ssh-keyscan` tekrarlanır; modern SSH sunucularında bağlantı sorununa yol açabilir. |
+| `SSH_KNOWN_HOSTS` | Önerilir | `myserver.com ssh-ed25519 AAAA...` | Sunucunun host key satırı. `ssh-keyscan -p 22 <SSH_HOST>` çıktısını buraya yapıştırın. Boş bırakılırsa pipeline ilk adımda bir kez `ssh-keyscan` yapar; bu değer verilirse tarama hiç yapılmaz (modern `PerSourcePenalties` korumalı sunucularda daha güvenli). |
 
 ### `SERVICES` çok satırlı örnek / Multi-line example
 
@@ -103,7 +103,7 @@ sudo SERVICES="web|src/Web/Web.csproj|/opt/myapp-web|myapp-web|http://127.0.0.1:
      bash scripts/setup-host.sh
 ```
 
-Script şunları yapar: systemd servis birimlerini oluşturur, deploy dizinlerini hazırlar, boş bir `.dll` placeholder yazar.
+Script yalnızca her servis için systemd birimini oluşturup `enable` eder (deploy dizinleri ilk deploy sırasında pipeline tarafından oluşturulur). Servisler ilk başarılı deploy'dan sonra başlar.
 
 ### Uzak / Remote (`DEPLOY_TARGET=remote`)
 
@@ -118,13 +118,13 @@ SERVICES="web|src/Web/Web.csproj|/opt/myapp-web|myapp-web|http://127.0.0.1:5001"
 bash scripts/setup-remote-host.sh
 ```
 
-**Sunucuda sudoers gereksinimi:** Deploy kullanıcısının şifresiz `sudo` ile aşağıdaki komutları çalıştırabilmesi gerekir:
+**Sunucuda sudoers gereksinimi:** Pipeline dağıtım adımlarını (`mkdir`, `cp`, `rm`, `chown`, `mv`, `chmod`, `systemctl`) tek bir bileşik komut olarak `sudo bash -c "..."` ile çalıştırır. Bu nedenle komut bazlı dar bir whitelist **çalışmaz**; deploy kullanıcısına şifresiz tam `sudo` verilmelidir:
 
 ```
-deploy ALL=(ALL) NOPASSWD: /bin/systemctl, /bin/mkdir, /bin/cp, /bin/rm, /bin/chown
+deploy ALL=(ALL) NOPASSWD: ALL
 ```
 
-Ayrıca `/opt/...` dizinlerine yazma yetkisi verilmelidir.
+**Not:** Bu tam `sudo` yetkisidir. Daha kısıtlı istiyorsanız `deploy` kullanıcısını yalnızca bu dağıtım sunucusuna özel açın; başka görevlerde kullanmayın.
 
 ---
 

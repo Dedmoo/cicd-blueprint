@@ -153,7 +153,11 @@ flowchart TB
 
 - **TR:** Hiçbir üretim dağıtımı, kimsenin haberi olmadan tek bir olayla gerçekleşemez. / **EN:** No production deploy can happen through a single event without anyone's awareness.
 - **TR:** Onay bekleyen dağıtım GitHub arayüzünde görünür; kim tetikledi, hangi açıklamayla — hepsi kayıtlıdır. / **EN:** A pending deploy is visible in the GitHub UI; who triggered it and with what description — all recorded.
-- **TR:** `run-name`, dağıtımı yapanı ve açıklamayı içerir (ör. `Deploy - Dedmoo - ana sayfa güncellendi`). / **EN:** `run-name` includes the actor and description (e.g., `Deploy - Dedmoo - homepage updated`).
+- **TR:** `run-name`, dağıtımı yapanı, açıklamayı ve commit'i içerir (ör. `Production Deploy | ana sayfa güncellendi | by Dedmoo | <sha>`). / **EN:** `run-name` includes the actor, description and commit (e.g., `Production Deploy | homepage updated | by Dedmoo | <sha>`).
+
+**TR — Onaydan önce görünen özet (`prepare` job):** Her `deploy`/`rollback` çalışması, onay kapısından **önce** onaysız bir `prepare` job'u koşar. Bu job commit'i checkout edip **açıklama + commit kısa mesajı + SHA + kaynak + hedef** bilgisini çalışmanın **Summary** sekmesine yazar. Böylece onaylayan kişi `production-deploy.yml` dosyasını açmadan ne dağıtıldığını görür. **Onaylayan kişi, Actions çalışma sayfasındaki `prepare` özetine bakmadan onay vermemelidir.**
+
+**EN — Summary shown before approval (`prepare` job):** Every `deploy`/`rollback` run executes an unapproved `prepare` job **before** the approval gate. It checks out the commit and writes **description + short commit message + SHA + source + target** to the run's **Summary** tab, so the reviewer sees exactly what is being deployed without opening `production-deploy.yml`. **The reviewer must not approve without first reading the `prepare` summary on the Actions run page.**
 
 **TR — Önerilen `production` ortam sertleştirmesi (Settings → Environments → `production`):** Onay kapısını gerçekten etkili kılmak için şu ayarlar önerilir:
 
@@ -173,8 +177,9 @@ sequenceDiagram
     participant R as Reviewer
     participant P as Production
     D->>GH: Deploy tetikle (açıklama + kaynak)
-    GH->>R: Onay iste / request approval
-    R-->>GH: Onayla / Approve
+    GH->>GH: prepare (onaysiz): ozet yaz / write summary
+    GH->>R: Onay iste + ozet goster / request approval + show summary
+    R-->>GH: Ozeti oku, onayla / read summary, approve
     GH->>P: Dağıtımı yürüt / run deployment
     P-->>GH: Sağlık sonucu / health result
 ```
@@ -368,15 +373,15 @@ bash scripts/setup-remote-host.sh
 
 ### 4. Uzak kullanıcı yetkileri / Remote user permissions
 
-**TR:** Deploy kullanıcısının `sudo` ile `systemctl`, `mkdir`, `cp`, `rm`, `chown` çalıştırabilmesi gerekir (şifresiz önerilir):
+**TR:** Deploy kullanıcısının **şifresiz `sudo`** yetkisi olmalıdır. Pipeline, dağıtım adımlarını (`mkdir`, `cp`, `rm`, `chown`, `mv`, `chmod`, `systemctl`) tek bir bileşik komut olarak `sudo bash -c "..."` ile çalıştırır; bu nedenle komut bazlı dar bir whitelist **çalışmaz** ve tam yetki gerekir:
 
 ```
-deploy ALL=(ALL) NOPASSWD: /bin/systemctl, /bin/mkdir, /bin/cp, /bin/rm, /bin/chown
+deploy ALL=(ALL) NOPASSWD: ALL
 ```
 
-`/opt/...` dizinlerine yazma yetkisi de verilmelidir. (`pkill` gerekmez — yeniden başlatma yalnızca `systemctl` ile yapılır.)
+**Not:** Bu tam `sudo` yetkisidir. Daha kısıtlı bir kurulum istiyorsanız, `deploy` kullanıcısını yalnızca bu dağıtım sunucusuna özel açın (başka görev vermeyin). (`pkill` gerekmez — yeniden başlatma yalnızca `systemctl` ile yapılır.)
 
-**EN:** The deploy user needs passwordless `sudo` for `systemctl`, `mkdir`, `cp`, `rm`, `chown` under `/opt/...`. (`pkill` is not required — restarts use `systemctl` only.)
+**EN:** The deploy user needs **passwordless `sudo`**. The pipeline runs each deployment step (`mkdir`, `cp`, `rm`, `chown`, `mv`, `chmod`, `systemctl`) as a single compound command via `sudo bash -c "..."`, so a narrow per-command whitelist **does not work** and full privilege is required (`deploy ALL=(ALL) NOPASSWD: ALL`). This is full `sudo`; for a tighter setup, dedicate the `deploy` user to this deployment server only. (`pkill` is not required — restarts use `systemctl` only.)
 
 ### Local vs Remote
 
@@ -399,7 +404,7 @@ deploy ALL=(ALL) NOPASSWD: /bin/systemctl, /bin/mkdir, /bin/cp, /bin/rm, /bin/ch
 | `Host key verification failed` | `StrictHostKeyChecking=yes` açık ve host `known_hosts`'ta yok. | `SSH_KNOWN_HOSTS` variable'ına host anahtarını koyun: `ssh-keyscan -p <port> <host>` çıktısını yapıştırın. |
 | `Permission denied (publickey)` | Public key sunucuda yok, yanlış kullanıcı veya izinler hatalı. | `deploy_key.pub`'ı `~<SSH_USER>/.ssh/authorized_keys`'e ekleyin; `SSH_USER` doğru olsun; `chmod 700 ~/.ssh`, `chmod 600 authorized_keys`. |
 | `Load key ... invalid format` / `error in libcrypto` | `SSH_PRIVATE_KEY` secret'ı eksik/bozuk yapıştırılmış. | Anahtarın **tümünü** (`-----BEGIN...` ve `-----END...` satırları dahil) yapıştırın. `ed25519` ve **şifresiz** (passphrase yok) key kullanın. |
-| `sudo: a password is required` / restart-backup adımı takılıyor | Deploy kullanıcısında şifresiz `sudo` yok. | Sunucuda sudoers (`visudo`): `deploy ALL=(ALL) NOPASSWD: /bin/systemctl, /bin/mkdir, /bin/cp, /bin/rm, /bin/chown`. |
+| `sudo: a password is required` / restart-backup adımı takılıyor | Deploy kullanıcısında şifresiz `sudo` yok. | Sunucuda sudoers (`visudo`): `deploy ALL=(ALL) NOPASSWD: ALL` (komutlar `sudo bash -c` ile çalıştığından dar whitelist yetmez). |
 | Health başarısız ama servis ayakta | `health_url` runner'dan erişilemiyor (`127.0.0.1` yazılmış) veya port firewall'da kapalı. | Remote'ta `health_url = http://<sunucu-ip>:port`; güvenlik grubunda/firewall'da o portu runner'a açın. |
 | `Connection timed out` | Port/firewall veya yanlış `SSH_HOST`/`SSH_PORT`. | Sunucuda 22 (veya `SSH_PORT`) portunu runner IP'sine açın; `SSH_HOST` ve `SSH_PORT` değerlerini doğrulayın. |
 | `rsync: command not found` | rsync runner'da **veya** sunucuda kurulu değil. | İki tarafta da kurun: `sudo apt-get install -y rsync`. |
@@ -534,7 +539,7 @@ ssh-keyscan -p 22 10.0.0.5
    sudo SERVICES="web|src/Web/Web.csproj|/opt/myapp-web|myapp-web|http://127.0.0.1:5001" \
         bash scripts/setup-host.sh
    ```
-6. **TR:** `main`'e push edin (CI yeşil), sonra Actions → Deploy'u tetikleyin. / **EN:** Push to `main` (CI green), then Actions → trigger Deploy.
+6. **TR:** `main`'e push edin (CI yeşil), sonra Actions → **Production Deploy**'u tetikleyin. / **EN:** Push to `main` (CI green), then Actions → trigger **Production Deploy**.
 
 **TR:** Not: `SERVICES` değerini adım 2'de girdiğiniz değişkenden kopyalayıp adım 5'te kullanın (aynı değer). Farklı yığınlar (Node.js, Java) için yalnızca üç komut (build/test, publish, run) değişir — ayrıntılar dokümanda.
 **EN:** Note: use the same `SERVICES` value from step 2 in step 5. For other stacks (Node.js, Java) only three commands (build/test, publish, run) change — details in the docs.

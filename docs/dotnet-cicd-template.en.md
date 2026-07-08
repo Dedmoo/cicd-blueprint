@@ -167,7 +167,7 @@ To use this template you **edit no files.** All application-specific values are 
    ```
    (For multiple services, `SERVICES` can be multi-line.)
 6. **Run the first CI:** Push to `main`; confirm it is green.
-7. **Perform the first deployment:** Actions → Deploy → enter a description, approve.
+7. **Perform the first deployment:** Actions → **Production Deploy** → enter a description, approve.
 
 ## 7. Different Technology Stacks
 

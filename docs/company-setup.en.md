@@ -45,7 +45,7 @@
 | `SSH_HOST` | Remote | `192.168.1.100` or `myserver.com` | IP or hostname of the target server. Required only when `DEPLOY_TARGET=remote`. |
 | `SSH_USER` | Remote | `deploy` | SSH username. Required only when `DEPLOY_TARGET=remote`. |
 | `SSH_PORT` | No | `22` | SSH port. Default is `22`. |
-| `SSH_KNOWN_HOSTS` | Recommended | `myserver.com ssh-ed25519 AAAA...` | Host key line of the server. Paste the output of `ssh-keyscan -p 22 <SSH_HOST>` here. Without this value, `ssh-keyscan` runs on every pipeline step, which can cause connection issues on modern SSH servers. |
+| `SSH_KNOWN_HOSTS` | Recommended | `myserver.com ssh-ed25519 AAAA...` | Host key line of the server. Paste the output of `ssh-keyscan -p 22 <SSH_HOST>` here. If left empty, the pipeline runs `ssh-keyscan` once on the first step; if provided, no scan happens at all (safer on modern servers with `PerSourcePenalties`). |
 
 ### Multi-line `SERVICES` example
 
@@ -103,7 +103,7 @@ sudo SERVICES="web|src/Web/Web.csproj|/opt/myapp-web|myapp-web|http://127.0.0.1:
      bash scripts/setup-host.sh
 ```
 
-The script creates systemd service units, prepares the deploy directories, and writes an empty `.dll` placeholder.
+The script only creates and enables a systemd unit for each service (deploy directories are created by the pipeline during the first deploy). Services start after the first successful deploy.
 
 ### Remote (`DEPLOY_TARGET=remote`)
 
@@ -118,13 +118,13 @@ SERVICES="web|src/Web/Web.csproj|/opt/myapp-web|myapp-web|http://127.0.0.1:5001"
 bash scripts/setup-remote-host.sh
 ```
 
-**sudoers requirement on the server:** The deploy user needs passwordless `sudo` for the following commands:
+**sudoers requirement on the server:** The pipeline runs each deployment step (`mkdir`, `cp`, `rm`, `chown`, `mv`, `chmod`, `systemctl`) as a single compound command via `sudo bash -c "..."`. A narrow per-command whitelist therefore **does not work**; the deploy user needs full passwordless `sudo`:
 
 ```
-deploy ALL=(ALL) NOPASSWD: /bin/systemctl, /bin/mkdir, /bin/cp, /bin/rm, /bin/chown
+deploy ALL=(ALL) NOPASSWD: ALL
 ```
 
-Write access to `/opt/...` directories must also be granted.
+**Note:** This is full `sudo`. For a tighter setup, dedicate the `deploy` user to this deployment server only; do not reuse it for other tasks.
 
 ---
 

@@ -31,3 +31,6 @@ jobs:
       upload_artifact: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       # Servisler repo degiskeninden / services from the repo variable
       services: ${{ vars.SERVICES }}
+      # Artifact adi deploy ile ayni olmali (ci_artifact indirmesi bu ada bakar)
+      # Artifact name must match deploy (the ci_artifact download looks it up by this name)
+      artifact_name: ${{ vars.ARTIFACT_NAME || 'app-publish' }}

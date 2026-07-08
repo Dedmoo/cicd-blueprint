@@ -161,6 +161,15 @@ trap ssh_remote_cleanup EXIT
 
 ## Sonuç
 
-Şablon genel olarak **güvenli** bir tasarıma sahiptir. Tespit edilen en önemli bulgu `INJ-01`'dir; ancak `SERVICES` değişkenine yalnızca repo yöneticilerinin erişebildiği varsayımıyla pratik riski düşüktür. `PIN-01` ise CI/CD güvenlik standartları açısından belgelenmesi gereken bir iyileştirme fırsatıdır.
+Şablon genel olarak **güvenli** bir tasarıma sahiptir. Kullanıcı onayıyla üç bulgu giderildi:
 
-**Kod değişikliği yapmak için "şunu düzelt" onayınızı bekliyorum.**
+- **INJ-01 (ORTA):** `validate_services()` ile SERVICES alanları whitelist doğrulamasından geçiyor.
+- **TMP-01 (DÜŞÜK):** Uzak geçici dosya `mktemp` ile rassal isim alıyor.
+- **PIN-01 (DÜŞÜK-ORTA, kısmi):** `dependabot.yml` action güncellemelerini otomatik izler. **Not:** Bu tam bir azaltma değildir — action'lar hâlâ `@v4` etiket ile pinlenmiştir; SLSA düzeyinde katı güvenlik için tam commit SHA pinleme ayrıca yapılmalıdır. Dependabot yalnızca güncelleme PR'ları önerir.
+
+**Açık bırakılan (kabul edilebilir) bulgular:**
+
+- **FORK-01 (DÜŞÜK):** `pull_request` + self-hosted runner riski yalnızca **public** repo'da anlamlıdır. Bu şablon private proje repoları için tasarlanmıştır; public kullanımda PR'lar için ek bir onay kapısı önerilir.
+- **CLEANUP-01 (BİLGİ):** `SIGKILL` sonrası geçici SSH anahtar dosyası bilinen bir kısıttır; `chmod 600` ve izole runner çalışma alanı ile pratik risk düşüktür.
+
+**Operasyonel not (güvenlik dışı ama kritik):** `remote_sudo` komutları hedef sunucuda `sudo bash -c "..."` ile çalışır; bu yüzden deploy kullanıcısı **tam `NOPASSWD: ALL`** yetkisine ihtiyaç duyar (dar komut whitelist'i çalışmaz). Bu, tasarımın bilinçli bir sonucudur ve dokümantasyonda (README + company-setup) belirtilmiştir.
