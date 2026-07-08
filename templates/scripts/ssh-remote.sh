@@ -104,11 +104,17 @@ remote_ssh() {
   "${SSH_CMD[@]}" "$SSH_TARGET" "$@"
 }
 
-# Stdin'den okunan scripti uzak hostda calistirir; positional arglar $1, $2, ... olarak iletilir.
-# Runs a script read from stdin on the remote host; positional args are passed as $1, $2, ...
-# Usage: remote_ssh_stdin arg1 arg2 <<'SCRIPT' ... SCRIPT
-remote_ssh_stdin() {
-  "${SSH_CMD[@]}" "$SSH_TARGET" bash -s -- "$@"
+# Stdin'den okunan scripti uzak hostda root (sudo) olarak calistirir; positional
+# arglar $1, $2, ... olarak iletilir. NOPASSWD sudo gerektirir (dokumante edilmis kosul).
+# Socket saglik kontrolu icin kullanilir: idle renk socketi root:cicd 0660'tir; deploy
+# kullanicisi cicd grubunda olmadigindan yalnizca root erisebilir.
+# Runs a script read from stdin on the remote host as root (sudo); positional args are
+# passed as $1, $2, ... Requires NOPASSWD sudo (documented requirement). Used for the
+# socket health check: the idle color socket is root:cicd 0660; since the deploy user is
+# not in the cicd group, only root can reach it.
+# Usage: remote_sudo_stdin arg1 arg2 <<'SCRIPT' ... SCRIPT
+remote_sudo_stdin() {
+  "${SSH_CMD[@]}" "$SSH_TARGET" sudo bash -s -- "$@"
 }
 
 remote_sudo() {

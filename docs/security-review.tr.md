@@ -130,8 +130,10 @@ remote_sudo "mv '$tmp' '${dd}/.env' && chmod 600 '${dd}/.env' && ..."
 
 **Model:** Her blue/green systemd birimi `Group=cicd`, `UMask=0007` ile çalışır. Kestrel bu ayarlarla Unix socket'i `0660 root:cicd` olarak oluşturur. nginx kullanıcısı (`www-data`/`nginx`) `usermod -aG cicd` ile `cicd` grubuna eklenmiştir; dolayısıyla nginx socket'e bağlanabilir. Diğer sistem kullanıcıları grupta değilse sokete erişemez.
 
+**Deploy kullanıcısı ve health kontrolü:** Deploy kullanıcısı `cicd` grubuna **eklenmez** (yüzey daraltılır). Bu nedenle pipeline'ın idle renk socket sağlık kontrolü (`pipeline.sh health`), socket'e `sudo` (root) ile erişir (`remote_sudo_stdin`). Root her socket'e erişebildiğinden bu doğru çalışır ve deploy kullanıcısının socket grubuna dahil edilmesine gerek kalmaz. Bu, zaten gereken `NOPASSWD: ALL` yetkisiyle tutarlıdır (bkz. operasyonel not).
+
 **Değerlendirme:**
-- `cicd` grubu yalnızca nginx ve .NET servis kullanıcılarını içerir; dar kapsam iyi uygulama.
+- `cicd` grubu yalnızca nginx ve .NET servis kullanıcılarını içerir; deploy kullanıcısı grupta değildir — dar kapsam iyi uygulama.
 - `RuntimeDirectoryPreserve=yes` iki renk aynı anda çalışırken `/run/cicd/` silinmesini önler.
 - Sistemd `RuntimeDirectory=cicd` her unit başlatılışında `/run/cicd/` sahipliğini `root` olarak ayarlar; grub `cicd` bırakır (mode `0750`); bu tasarım socket erişimini kontrollü tutar.
 - **Potansiyel öneri:** `Group=cicd` birimlerin *aynı* `cicd` grubunu kullanması socket erişimini `nginx` ile paylaşır ancak sistemdeki başka `cicd` üyelerini de dahil eder; bu kullanıcı sayısını mümkün olduğunca az tutarak yönetilebilir kılar.

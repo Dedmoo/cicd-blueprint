@@ -158,9 +158,14 @@ target_publish_dir() {
   local staging="$1"
   local dest="$2"
   if is_remote; then
-    remote_sudo "mkdir -p '$dest'"
+    # Dizini root ile olustur, sonra deploy kullanicisina devret: boylece rsync
+    # (deploy kullanicisi olarak calisir) dizine yazabilir. chown, rsync'ten ONCE
+    # yapilmali; aksi halde root sahipli dizine yazma "Permission denied" verir.
+    # Create the dir as root, then hand it to the deploy user so rsync (which runs
+    # as the deploy user) can write into it. chown MUST happen BEFORE rsync;
+    # otherwise writing into a root-owned dir fails with "Permission denied".
+    remote_sudo "mkdir -p '$dest' && chown -R '${SSH_USER}':'${SSH_USER}' '$dest'"
     remote_rsync "${staging}/" "${dest}/"
-    remote_sudo "chown -R '${SSH_USER}':'${SSH_USER}' '$dest'"
   else
     mkdir -p "$dest"
     rsync -a --delete "${staging}/" "${dest}/"
@@ -218,9 +223,11 @@ target_health_socket_one() {
   local health_path="$2"
 
   if is_remote; then
-    # Scripti uzak host'ta calistir; FD 0 (stdin) dongu FD 3'ten ayri oldugundan guvenli.
-    # Run script on remote host; safe because the loop uses FD 3, not stdin (FD 0).
-    remote_ssh_stdin "$sock" "$health_path" <<'HEALTHCHECK'
+    # Scripti uzak host'ta root olarak calistir; FD 0 (stdin) dongu FD 3'ten ayridir.
+    # Root gerekli: idle renk socketi root:cicd 0660; deploy kullanicisi erisemez.
+    # Run script as root on the remote host; FD 0 (stdin) is separate from the loop's FD 3.
+    # Root is required: the idle color socket is root:cicd 0660; the deploy user can't reach it.
+    remote_sudo_stdin "$sock" "$health_path" <<'HEALTHCHECK'
 sock="$1"; hp="$2"; m=12; w=5
 for i in $(seq 1 "$m"); do
   c="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
@@ -264,7 +271,14 @@ nginx_write_upstream() {
     keepalive 32;
 }"
   if is_remote; then
-    remote_write_file "$content" "$include_file" 644
+    # /etc/nginx/cicd root sahiplidir ve oyle kalmali (sistem dizini). Deploy
+    # kullanicisi oraya dogrudan yazamaz; once /tmp'e yaz, sonra sudo ile tasi.
+    # /etc/nginx/cicd is root-owned and must stay so (system dir). The deploy
+    # user cannot write there directly; write to /tmp first, then sudo-move.
+    local tmp
+    tmp="$(remote_ssh "mktemp /tmp/cicd-upstream-XXXXXX")"
+    remote_write_file "$content" "$tmp" 644
+    remote_sudo "mv '$tmp' '$include_file' && chmod 644 '$include_file'"
   else
     printf '%s\n' "$content" > "$include_file"
   fi
