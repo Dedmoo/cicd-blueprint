@@ -51,6 +51,9 @@ Restart=always
 RestartSec=5
 Environment=ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENV}
 Environment=DOTNET_USE_POLLING_FILE_WATCHER=1
+# Gizli ortam degiskenleri (APP_ENV secret'inden deploy'da yazilir; yoksa yok sayilir)
+# Secret env vars (written from the APP_ENV secret at deploy; ignored if absent)
+EnvironmentFile=-${dd}/.env
 
 [Install]
 WantedBy=multi-user.target

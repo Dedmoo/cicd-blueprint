@@ -3,6 +3,9 @@ name: CI
 # Sürekli Entegrasyon / Continuous Integration
 # main dalina her push ve PR'de otomatik derleme + test.
 # Automatic build + test on every push/PR to main.
+#
+# BU DOSYAYI DUZENLEMENIZE GEREK YOK. Servis listesi repo degiskeni SERVICES'tan okunur.
+# NO NEED TO EDIT THIS FILE. The service list is read from the SERVICES repo variable.
 
 on:
   push:
@@ -21,7 +24,5 @@ jobs:
       configuration: Release
       # Sadece main'e push'ta artifact uret / build artifacts only on push to main
       upload_artifact: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      # === DUZENLE / EDIT: yayimlanacak servisler (name|csproj) ===
-      services: |
-        web|src/Web/Web.csproj
-        api|src/Api/Api.csproj
+      # Servisler repo degiskeninden / services from the repo variable
+      services: ${{ vars.SERVICES }}

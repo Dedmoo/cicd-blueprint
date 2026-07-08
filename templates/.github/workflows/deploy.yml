@@ -3,6 +3,14 @@ name: Deploy
 # Sürekli Dağıtım / Continuous Deployment
 # Elle tetiklenir, production onayi ister, saglik kontrolu ve otomatik geri alma icerir.
 # Manually triggered, requires production approval, includes health check and auto-rollback.
+#
+# BU DOSYAYI DUZENLEMENIZE GEREK YOK. Tum proje bilgileri repo Variables/Secrets'tan okunur.
+# NO NEED TO EDIT THIS FILE. All project values are read from repo Variables/Secrets.
+#   Settings > Secrets and variables > Actions
+#   - Variable  SERVICES      : name|csproj|deploy_dir|service_name|health_url (her satir bir servis)
+#   - Variable  RUNNER_LABEL  : runner etiketiniz (varsayilan / default: self-hosted)
+#   - Variable  ARTIFACT_NAME : (opsiyonel / optional, varsayilan: app-publish)
+#   - Secret    APP_ENV       : (opsiyonel) KEY=VALUE satirlari; servise .env olarak enjekte edilir
 
 on:
   workflow_dispatch:
@@ -27,21 +35,24 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # === DUZENLE / EDIT: servisleriniz (tek yapilandirma kaynagi) ===
-  # === EDIT: your services (single source of configuration) ===
-  # format: name|csproj|deploy_dir|service_name|health_url
-  SERVICES: |
-    web|src/Web/Web.csproj|/opt/myapp-web|myapp-web|http://127.0.0.1:5001
-    api|src/Api/Api.csproj|/opt/myapp-api|myapp-api|http://127.0.0.1:5200
-  ARTIFACT_NAME: app-publish
+  SERVICES: ${{ vars.SERVICES }}
+  ARTIFACT_NAME: ${{ vars.ARTIFACT_NAME || 'app-publish' }}
 
 jobs:
   deploy:
-    runs-on: [ self-hosted ]   # DUZENLE / EDIT: runner etiketiniz / your runner label
+    runs-on: ${{ vars.RUNNER_LABEL || 'self-hosted' }}
     environment: production    # onay kapisi bu ortama baglanir / approval gate binds to this environment
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Yapilandirmayi dogrula / validate configuration
+        run: |
+          if [ -z "${SERVICES// /}" ]; then
+            echo "HATA / ERROR: 'SERVICES' repo degiskeni tanimli degil."
+            echo "Settings > Secrets and variables > Actions > Variables > New variable > SERVICES"
+            exit 1
+          fi
 
       - name: Deploy ozeti / summary
         run: |
@@ -91,6 +102,11 @@ jobs:
       - name: Yayinla (artifact) / publish (artifact)
         if: inputs.source == 'ci_artifact'
         run: bash scripts/pipeline.sh deploy-artifacts
+
+      - name: Gizli ortami yaz / write secret environment
+        env:
+          APP_ENV: ${{ secrets.APP_ENV }}
+        run: bash scripts/pipeline.sh write-env
 
       - name: Deploy bilgisini yaz / write deploy info
         env:

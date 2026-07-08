@@ -92,7 +92,7 @@ name|csproj|deploy_dir|service_name|health_url
 | `service_name` | systemd service name | `myapp-web` |
 | `health_url` | Health check base URL | `http://127.0.0.1:5001` |
 
-This block must be identical in three places: `deploy.yml`, `rollback.yml` (as an environment variable) and in host setup (passed as an environment variable to `setup-host.sh`). CI uses only the first two fields (`name|csproj`).
+This block is defined in one place as a **repo variable (`vars.SERVICES`)** on GitHub; `ci.yml`, `deploy.yml` and `rollback.yml` read this variable (no file editing needed). In host setup, the same value is passed once to `setup-host.sh` as an environment variable. CI uses only the first two fields (`name|csproj`); the rest are ignored.
 
 **Derived values:** The `dll` name is derived from `csproj` (`Web.csproj` → `Web.dll`), and the binding port is extracted automatically from `health_url`. This keeps `SERVICES` free of redundant fields.
 
@@ -141,16 +141,21 @@ Two modes: `previous_folder` (instant reversion from the `*.previous` backup) an
 
 ## 6. Adapting to Your Project (Step by Step)
 
+To use this template you **edit no files.** All application-specific values are entered from the GitHub UI as **Variables** and **Secrets**; the workflows read them.
+
 1. **Copy the template:** Copy `templates/.github` and `templates/scripts` to the root of your own repository.
-2. **Fill in `SERVICES`:** Edit the `SERVICES` block in `deploy.yml` and `rollback.yml`, and the `services` (`name|csproj`) list in `ci.yml`, for your projects.
-3. **Set the runner label:** Replace `runs-on: [ self-hosted ]` in all workflows with your runner label.
-4. **Prepare the host:** Once on the runner machine:
+2. **Add Variables:** GitHub → Settings → Secrets and variables → Actions → Variables:
+   - `SERVICES` (required): the service list, one line each `name|csproj|deploy_dir|service_name|health_url`.
+   - `RUNNER_LABEL` (optional): runner label (default `self-hosted`).
+   - `ARTIFACT_NAME` (optional): artifact name (default `app-publish`).
+3. **Add Secrets (optional):** Put `KEY=VALUE` lines into the `APP_ENV` secret (connection strings, API keys). At deploy it is injected into each service as `.env`; .NET applies them over `appsettings` automatically.
+4. **Create the `production` environment:** Settings → Environments → add `production` and define **required reviewers** (the approval gate).
+5. **Prepare the host:** Once on the runner machine (with the same `SERVICES` value as step 2):
    ```bash
    sudo SERVICES="web|src/Web/Web.csproj|/opt/myapp-web|myapp-web|http://127.0.0.1:5001" \
         bash scripts/setup-host.sh
    ```
    (For multiple services, `SERVICES` can be multi-line.)
-5. **Create the `production` environment:** GitHub → Settings → Environments → add `production` and define **required reviewers** (the approval gate).
 6. **Run the first CI:** Push to `main`; confirm it is green.
 7. **Perform the first deployment:** Actions → Deploy → enter a description, approve.
 

@@ -3,6 +3,9 @@ name: Rollback
 # Geri Alma / Rollback
 # Uretimi bilincli olarak eski bir duruma dondurur.
 # Deliberately returns production to an earlier state.
+#
+# BU DOSYAYI DUZENLEMENIZE GEREK YOK. Ayni repo Variables/Secrets kullanilir (bkz. deploy.yml).
+# NO NEED TO EDIT THIS FILE. Uses the same repo Variables/Secrets (see deploy.yml).
 
 on:
   workflow_dispatch:
@@ -31,14 +34,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # === DUZENLE / EDIT: deploy.yml ile ayni SERVICES / same SERVICES as deploy.yml ===
-  SERVICES: |
-    web|src/Web/Web.csproj|/opt/myapp-web|myapp-web|http://127.0.0.1:5001
-    api|src/Api/Api.csproj|/opt/myapp-api|myapp-api|http://127.0.0.1:5200
+  SERVICES: ${{ vars.SERVICES }}
 
 jobs:
   rollback:
-    runs-on: [ self-hosted ]   # DUZENLE / EDIT: runner etiketiniz / your runner label
+    runs-on: ${{ vars.RUNNER_LABEL || 'self-hosted' }}
     environment: production
     steps:
       - name: Checkout
@@ -56,6 +56,8 @@ jobs:
 
       - name: Belirli commit - yayinla / specific commit - publish
         if: inputs.mode == 'specific_commit'
+        env:
+          APP_ENV: ${{ secrets.APP_ENV }}
         run: |
           if [ -z "${{ inputs.commit_sha }}" ]; then
             echo "commit_sha zorunlu / required"
@@ -63,6 +65,7 @@ jobs:
           fi
           bash scripts/pipeline.sh backup
           bash scripts/pipeline.sh publish-source
+          bash scripts/pipeline.sh write-env
           bash scripts/pipeline.sh restart
 
       - name: Saglik kontrolu / health check

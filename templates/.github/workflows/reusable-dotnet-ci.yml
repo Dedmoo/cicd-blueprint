@@ -30,7 +30,7 @@ on:
 
 jobs:
   build-test:
-    runs-on: [ self-hosted ]   # DUZENLE / EDIT: runner etiketiniz / your runner label
+    runs-on: ${{ vars.RUNNER_LABEL || 'self-hosted' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

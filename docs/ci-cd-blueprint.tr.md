@@ -92,7 +92,7 @@ name|csproj|deploy_dir|service_name|health_url
 | `service_name` | systemd servis adı | `myapp-web` |
 | `health_url` | Sağlık kontrolü taban adresi | `http://127.0.0.1:5001` |
 
-Bu blok üç yerde birebir aynı olmalıdır: `deploy.yml`, `rollback.yml` (ortam değişkeni olarak) ve host kurulumunda (`setup-host.sh`'ye ortam değişkeni olarak geçirilir). CI'de yalnızca ilk iki alan (`name|csproj`) kullanılır.
+Bu blok, GitHub'da bir **repo değişkeni (`vars.SERVICES`)** olarak tek yerde tanımlanır; `ci.yml`, `deploy.yml` ve `rollback.yml` bu değişkeni okur (dosya düzenlemesi gerekmez). Host kurulumunda ise aynı değer `setup-host.sh`'ye ortam değişkeni olarak bir kez geçirilir. CI'de yalnızca ilk iki alan (`name|csproj`) kullanılır; diğerleri yok sayılır.
 
 **Türetilen değerler:** `dll` adı `csproj`'den (`Web.csproj` → `Web.dll`), bağlanma portu ise `health_url`'den otomatik çıkarılır. Böylece `SERVICES` gereksiz alanlarla şişmez.
 
@@ -141,16 +141,21 @@ flowchart TB
 
 ## 6. Kendi Projenize Uyarlama (Adım Adım)
 
+Bu şablonu kullanmak için **hiçbir dosyayı düzenlemezsiniz.** Uygulamaya özgü tüm değerler GitHub arayüzünden **Variables** ve **Secrets** olarak girilir; iş akışları bunları okur.
+
 1. **Şablonu kopyalayın:** `templates/.github` ve `templates/scripts` klasörlerini kendi deponuzun köküne kopyalayın.
-2. **`SERVICES`'i doldurun:** `deploy.yml` ve `rollback.yml` içindeki `SERVICES` bloğunu; ayrıca `ci.yml` içindeki `services` (`name|csproj`) listesini kendi projelerinize göre düzenleyin.
-3. **Runner etiketini ayarlayın:** Tüm iş akışlarındaki `runs-on: [ self-hosted ]` satırını kendi çalıştırıcı etiketinizle değiştirin.
-4. **Host'u hazırlayın:** Çalıştırıcı makinesinde bir kez:
+2. **Değişkenleri girin (Variables):** GitHub → Settings → Secrets and variables → Actions → Variables:
+   - `SERVICES` (zorunlu): servis listesi, her satır `name|csproj|deploy_dir|service_name|health_url`.
+   - `RUNNER_LABEL` (opsiyonel): çalıştırıcı etiketi (varsayılan `self-hosted`).
+   - `ARTIFACT_NAME` (opsiyonel): artifact adı (varsayılan `app-publish`).
+3. **Gizli bilgileri girin (Secrets, opsiyonel):** `APP_ENV` secret'ine `KEY=VALUE` satırları koyun (bağlantı dizeleri, API anahtarları). Deploy'da her servise `.env` olarak enjekte edilir; .NET bunları `appsettings` üzerine otomatik uygular.
+4. **`production` ortamını oluşturun:** Settings → Environments → `production` ekleyin ve **required reviewers** tanımlayın (onay kapısı).
+5. **Host'u hazırlayın:** Çalıştırıcı makinesinde bir kez (adım 2'deki `SERVICES` değerinin aynısıyla):
    ```bash
    sudo SERVICES="web|src/Web/Web.csproj|/opt/myapp-web|myapp-web|http://127.0.0.1:5001" \
         bash scripts/setup-host.sh
    ```
    (Birden çok servis için `SERVICES` çok satırlı verilebilir.)
-5. **`production` ortamını oluşturun:** GitHub → Settings → Environments → `production` ekleyin ve **required reviewers** tanımlayın (onay kapısı).
 6. **İlk CI'ı çalıştırın:** `main`'e push edin; yeşil olduğunu görün.
 7. **İlk dağıtımı yapın:** Actions → Deploy → açıklama girin, onaylayın.
 

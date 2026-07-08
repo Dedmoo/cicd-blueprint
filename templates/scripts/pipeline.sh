@@ -16,7 +16,7 @@
 # Kullanim / Usage:
 #   SERVICES="..." bash pipeline.sh <komut>
 #   komutlar / commands: backup | publish-source | deploy-artifacts |
-#                        write-info | restart | health | rollback
+#                        write-env | write-info | restart | health | rollback
 
 set -euo pipefail
 
@@ -75,6 +75,24 @@ cmd_deploy_artifacts() {
     mkdir -p "$dd"
     rsync -a --delete "$src/" "$dd/"
     echo "yayinlandi (artifact) / published (artifact): $src -> $dd"
+  done < <(services_lines)
+}
+
+cmd_write_env() {
+  # APP_ENV (KEY=VALUE satirlari) her servisin dizinine .env olarak yazilir.
+  # systemd birimi bunu EnvironmentFile ile yukler (setup-host.sh).
+  # APP_ENV (KEY=VALUE lines) is written as .env into each service dir;
+  # the systemd unit loads it via EnvironmentFile (setup-host.sh).
+  if [ -z "${APP_ENV:-}" ]; then
+    echo "APP_ENV bos, atlaniyor / empty, skipped"
+    return 0
+  fi
+  while IFS= read -r line; do
+    local dd; dd="$(field "$line" 3)"
+    [ -d "$dd" ] || continue
+    printf '%s\n' "$APP_ENV" > "${dd}/.env"
+    chmod 600 "${dd}/.env"
+    echo "gizli ortam yazildi / secret env written: ${dd}/.env"
   done < <(services_lines)
 }
 
@@ -143,12 +161,13 @@ main() {
     backup)           cmd_backup ;;
     publish-source)   cmd_publish_source ;;
     deploy-artifacts) cmd_deploy_artifacts ;;
+    write-env)        cmd_write_env ;;
     write-info)       cmd_write_info ;;
     restart)          cmd_restart ;;
     health)           cmd_health ;;
     rollback)         cmd_rollback ;;
     *)
-      echo "kullanim / usage: SERVICES=... bash pipeline.sh <backup|publish-source|deploy-artifacts|write-info|restart|health|rollback>"
+      echo "kullanim / usage: SERVICES=... bash pipeline.sh <backup|publish-source|deploy-artifacts|write-env|write-info|restart|health|rollback>"
       exit 1
       ;;
   esac

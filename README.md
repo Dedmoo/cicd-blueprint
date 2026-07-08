@@ -230,11 +230,26 @@ note=ana sayfa metni güncellendi
 
 ---
 
-## Tek yapılandırma kaynağı / Single source of configuration
+## Kod yazmazsınız — sadece bilgi girersiniz / No code — you only fill in values
 
-**TR:** Sistemin tamamı tek bir `SERVICES` bloğuyla yapılandırılır. Her satır bir servisi tanımlar; bir veya N servis desteklenir. Port ve `dll` adı bu satırlardan otomatik türetilir.
+**TR:** Bu şablon **boru hattının kendisidir** (workflow'lar + scriptler); sizin uygulama kodunuzu içermez. Onu kullanmak için **hiçbir dosyayı düzenlemezsiniz.** Projenize özel tüm bilgiler (proje yolları, runner, IP/bağlantı dizeleri, API anahtarları) GitHub arayüzünden **Variables** ve **Secrets** olarak girilir; workflow'lar bunları okur. Bilgileri girdiğiniz an kullanıma hazırdır.
 
-**EN:** The entire system is configured with a single `SERVICES` block. Each line defines one service; one or N services are supported. The port and `dll` name are derived automatically from these lines.
+**EN:** This template is **the pipeline itself** (workflows + scripts); it does not contain your application code. To use it you **edit no files.** All project-specific values (project paths, runner, IP/connection strings, API keys) are entered from the GitHub UI as **Variables** and **Secrets**; the workflows read them. It is ready to use the moment you fill them in.
+
+**Settings → Secrets and variables → Actions**
+
+| Tür / Type | Ad / Name | Zorunlu / Required | İçerik / Content |
+|---|---|---|---|
+| Variable | `SERVICES` | Evet / Yes | Servis listesi (aşağıya bakın) / service list (see below) |
+| Variable | `RUNNER_LABEL` | Hayır / No | Runner etiketi (varsayılan / default: `self-hosted`) |
+| Variable | `ARTIFACT_NAME` | Hayır / No | Artifact adı (varsayılan / default: `app-publish`) |
+| Secret | `APP_ENV` | Hayır / No | `KEY=VALUE` satırları: bağlantı dizeleri, API anahtarları / connection strings, API keys |
+
+### `SERVICES` değişkeni / variable
+
+**TR:** Sistemin tamamı bu tek değişkenle yapılandırılır. Her satır bir servisi tanımlar; bir veya N servis desteklenir. Port ve `dll` adı satırlardan otomatik türetilir.
+
+**EN:** The entire system is configured by this single variable. Each line defines one service; one or N services are supported. The port and `dll` name are derived automatically.
 
 ```
 name|csproj|deploy_dir|service_name|health_url
@@ -252,6 +267,18 @@ api|src/Api/Api.csproj|/opt/myapp-api|myapp-api|http://127.0.0.1:5200
 | `deploy_dir` | Host'ta hedef dizin / target dir on host |
 | `service_name` | systemd servis adı / systemd service name |
 | `health_url` | Sağlık kontrolü taban adresi / health check base URL |
+
+### `APP_ENV` secret'i / secret (opsiyonel / optional)
+
+**TR:** Gizli yapılandırma (bağlantı dizeleri, API anahtarları) burada `KEY=VALUE` satırları olarak tutulur. Deploy sırasında her servisin dizinine `.env` olarak yazılır ve systemd servisine `EnvironmentFile` ile enjekte edilir. .NET, `ConnectionStrings__X` gibi ortam değişkenlerini `appsettings` üzerine otomatik uygular — yani kod değişikliği gerekmez.
+
+**EN:** Secret configuration (connection strings, API keys) is kept here as `KEY=VALUE` lines. At deploy it is written as `.env` into each service dir and injected into the systemd service via `EnvironmentFile`. .NET automatically applies env vars like `ConnectionStrings__X` over `appsettings` — so no code change is needed.
+
+```
+ConnectionStrings__CatalogConnection=Server=10.0.0.5,1433;User Id=sa;Password=...;TrustServerCertificate=true
+ConnectionStrings__IdentityConnection=Server=10.0.0.5,1433;User Id=sa;Password=...;TrustServerCertificate=true
+SomeApi__ApiKey=sk-...
+```
 
 ---
 
@@ -285,19 +312,22 @@ api|src/Api/Api.csproj|/opt/myapp-api|myapp-api|http://127.0.0.1:5200
 
 ## Hızlı başlangıç / Quick start
 
+**TR:** Dosya düzenlemeden. Sadece kopyalayın ve arayüzden bilgileri girin:
+**EN:** No file editing. Just copy and fill in values from the UI:
+
 1. **TR:** `templates/.github` ve `templates/scripts` klasörlerini kendi deponuzun köküne kopyalayın. / **EN:** Copy `templates/.github` and `templates/scripts` to your repository root.
-2. **TR:** `ci.yml`, `deploy.yml`, `rollback.yml` içindeki `SERVICES` / `services` bloğunu doldurun. / **EN:** Fill in the `SERVICES` / `services` blocks.
-3. **TR:** Tüm workflow'larda `runs-on` etiketini kendi runner'ınıza göre ayarlayın. / **EN:** Set the `runs-on` label to your runner in all workflows.
-4. **TR:** Host'ta bir kez çalıştırın / **EN:** Run once on the host:
+2. **TR:** GitHub → Settings → Secrets and variables → Actions → **Variables**: `SERVICES` (ve gerekiyorsa `RUNNER_LABEL`) ekleyin. / **EN:** Add the `SERVICES` variable (and `RUNNER_LABEL` if needed).
+3. **TR:** (Opsiyonel) **Secrets** → `APP_ENV`: bağlantı dizeleri / API anahtarları. / **EN:** (Optional) Secret `APP_ENV`: connection strings / API keys.
+4. **TR:** GitHub → Settings → Environments → `production` ekleyip **required reviewers** tanımlayın (onay kapısı). / **EN:** Add a `production` environment with **required reviewers** (approval gate).
+5. **TR:** Host'ta bir kez (systemd birimlerini kurar) / **EN:** Once on the host (creates systemd units):
    ```bash
    sudo SERVICES="web|src/Web/Web.csproj|/opt/myapp-web|myapp-web|http://127.0.0.1:5001" \
         bash scripts/setup-host.sh
    ```
-5. **TR:** GitHub → Settings → Environments → `production` ekleyip **required reviewers** tanımlayın. / **EN:** GitHub → Settings → Environments → add `production` with **required reviewers**.
-6. **TR:** `main`'e push edin (CI yeşil), sonra Deploy'u tetikleyin. / **EN:** Push to `main` (CI green), then trigger Deploy.
+6. **TR:** `main`'e push edin (CI yeşil), sonra Actions → Deploy'u tetikleyin. / **EN:** Push to `main` (CI green), then Actions → trigger Deploy.
 
-**TR:** Farklı teknoloji yığınları (Node.js, Java) için yalnızca üç komut (build/test, publish, run) değişir — ayrıntılar dokümanda.
-**EN:** For other stacks (Node.js, Java) only three commands (build/test, publish, run) change — details in the docs.
+**TR:** Not: `SERVICES` değerini adım 2'de girdiğiniz değişkenden kopyalayıp adım 5'te kullanın (aynı değer). Farklı yığınlar (Node.js, Java) için yalnızca üç komut (build/test, publish, run) değişir — ayrıntılar dokümanda.
+**EN:** Note: use the same `SERVICES` value from step 2 in step 5. For other stacks (Node.js, Java) only three commands (build/test, publish, run) change — details in the docs.
 
 ---
 
@@ -318,9 +348,9 @@ cicd-blueprint/
     │       ├── deploy.yml                      # elle, onaylı, health + otomatik rollback
     │       └── rollback.yml                    # previous_folder | specific_commit
     └── scripts/
-        ├── pipeline.sh            # backup/publish/deploy/restart/health/rollback
+        ├── pipeline.sh            # backup/publish/deploy/write-env/write-info/restart/health/rollback
         ├── verify-health.sh       # /health -> / fallback
-        └── setup-host.sh          # SERVICES'ten systemd birimleri üretir
+        └── setup-host.sh          # SERVICES'ten systemd birimleri üretir (+ .env EnvironmentFile)
 ```
 
 ---
