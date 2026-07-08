@@ -1,0 +1,54 @@
+name: Build and Test (.NET)
+description: .NET surum dogrulama, NuGet cache, restore, build ve test / .NET version check, NuGet cache, restore, build and test
+
+inputs:
+  configuration:
+    description: Build configuration (Release/Debug)
+    required: false
+    default: Release
+  solution:
+    description: Cozum veya proje dosyasi (bos = kok) / solution or project file (empty = repo root)
+    required: false
+    default: ""
+  min_dotnet_major:
+    description: Gerekli minimum .NET ana surumu / required minimum .NET major version
+    required: false
+    default: "8"
+
+runs:
+  using: composite
+  steps:
+    - name: .NET surumunu dogrula / verify .NET version
+      shell: bash
+      run: |
+        if ! command -v dotnet >/dev/null 2>&1; then
+          echo ".NET SDK bulunamadi / .NET SDK not found on runner"
+          exit 1
+        fi
+        version="$(dotnet --version)"
+        major="$(echo "$version" | cut -d. -f1)"
+        echo "runner .NET SDK: $version"
+        if [ "$major" -lt "${{ inputs.min_dotnet_major }}" ]; then
+          echo ".NET ${{ inputs.min_dotnet_major }}+ gerekli, bulunan / required, found: $version"
+          exit 1
+        fi
+
+    - name: NuGet cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/global.json', '**/Directory.Packages.props') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: Restore
+      shell: bash
+      run: dotnet restore ${{ inputs.solution }} /p:UseSharedCompilation=false
+
+    - name: Build
+      shell: bash
+      run: dotnet build ${{ inputs.solution }} --no-restore --configuration ${{ inputs.configuration }} /p:UseSharedCompilation=false
+
+    - name: Test
+      shell: bash
+      run: dotnet test ${{ inputs.solution }} --no-build --configuration ${{ inputs.configuration }} --verbosity normal /p:UseSharedCompilation=false

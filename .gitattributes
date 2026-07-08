@@ -1,0 +1,8 @@
+# Shell scriptleri ve YAML her zaman LF ile saklansin (Linux runner'da calisir).
+# Shell scripts and YAML must always be stored with LF (they run on the Linux runner).
+*.sh   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Diger metin dosyalari otomatik / other text files auto-normalized
+*       text=auto

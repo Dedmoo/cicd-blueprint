@@ -1,0 +1,79 @@
+name: Rollback
+
+# Geri Alma / Rollback
+# Uretimi bilincli olarak eski bir duruma dondurur.
+# Deliberately returns production to an earlier state.
+
+on:
+  workflow_dispatch:
+    inputs:
+      description:
+        description: "Neden geri aliniyor / Why rolling back"
+        required: true
+        type: string
+      mode:
+        description: "Geri alma modu / Rollback mode"
+        required: true
+        type: choice
+        options:
+          - previous_folder
+          - specific_commit
+        default: previous_folder
+      commit_sha:
+        description: "Belirli commit SHA (specific_commit modu) / specific commit SHA"
+        required: false
+        type: string
+
+run-name: Rollback - ${{ github.actor }} - ${{ inputs.description }}
+
+concurrency:
+  group: deploy-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  # === DUZENLE / EDIT: deploy.yml ile ayni SERVICES / same SERVICES as deploy.yml ===
+  SERVICES: |
+    web|src/Web/Web.csproj|/opt/myapp-web|myapp-web|http://127.0.0.1:5001
+    api|src/Api/Api.csproj|/opt/myapp-api|myapp-api|http://127.0.0.1:5200
+
+jobs:
+  rollback:
+    runs-on: [ self-hosted ]   # DUZENLE / EDIT: runner etiketiniz / your runner label
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.mode == 'specific_commit' && inputs.commit_sha || github.ref }}
+
+      - name: Onceki klasorden geri al / roll back from previous folder
+        if: inputs.mode == 'previous_folder'
+        run: bash scripts/pipeline.sh rollback
+
+      - name: Belirli commit - build + test / specific commit - build + test
+        if: inputs.mode == 'specific_commit'
+        uses: ./.github/actions/build-test
+
+      - name: Belirli commit - yayinla / specific commit - publish
+        if: inputs.mode == 'specific_commit'
+        run: |
+          if [ -z "${{ inputs.commit_sha }}" ]; then
+            echo "commit_sha zorunlu / required"
+            exit 1
+          fi
+          bash scripts/pipeline.sh backup
+          bash scripts/pipeline.sh publish-source
+          bash scripts/pipeline.sh restart
+
+      - name: Saglik kontrolu / health check
+        run: bash scripts/pipeline.sh health
+
+      - name: Rollback ozeti / summary
+        if: always()
+        run: |
+          {
+            echo "## Rollback"
+            echo "- Yapan / by: **${{ github.actor }}**"
+            echo "- Mod / mode: **${{ inputs.mode }}**"
+            echo "- Not / note: ${{ inputs.description }}"
+          } >> "$GITHUB_STEP_SUMMARY"

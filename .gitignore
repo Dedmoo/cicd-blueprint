@@ -1,0 +1,7 @@
+# OS / editor artefaktlari
+.DS_Store
+Thumbs.db
+*.tmp
+*.lf.sh
+.idea/
+.vs/

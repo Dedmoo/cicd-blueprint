@@ -1,0 +1,67 @@
+name: Reusable .NET CI
+
+# Yeniden kullanilabilir CI / Reusable CI
+# Baska .NET depolarindan da workflow_call ile cagrilabilir.
+# Can be called from other .NET repositories via workflow_call.
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        description: Build configuration
+        required: false
+        type: string
+        default: Release
+      upload_artifact:
+        description: Publish ciktisini artifact olarak yukle / upload publish output as artifact
+        required: false
+        type: boolean
+        default: false
+      services:
+        description: "Yayimlanacak servisler, her satir: name|csproj / services to publish, one per line"
+        required: false
+        type: string
+        default: ""
+      artifact_name:
+        description: Tek birlesik artifact adi / single combined artifact name
+        required: false
+        type: string
+        default: app-publish
+
+jobs:
+  build-test:
+    runs-on: [ self-hosted ]   # DUZENLE / EDIT: runner etiketiniz / your runner label
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build + test
+        uses: ./.github/actions/build-test
+        with:
+          configuration: ${{ inputs.configuration }}
+
+      - name: Publish (artifact icin) / publish (for artifact)
+        if: inputs.upload_artifact
+        env:
+          SERVICES_CI: ${{ inputs.services }}
+          CONFIG: ${{ inputs.configuration }}
+        run: |
+          PUBLISH_ROOT="$(mktemp -d)"
+          printf '%s\n' "$SERVICES_CI" | grep -vE '^\s*(#.*)?$' | while IFS= read -r line; do
+            name="$(printf '%s' "$line" | cut -d'|' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            csproj="$(printf '%s' "$line" | cut -d'|' -f2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            dotnet publish "$csproj" --configuration "$CONFIG" --output "${PUBLISH_ROOT}/${name}" /p:UseSharedCompilation=false
+          done
+          echo "PUBLISH_ROOT=$PUBLISH_ROOT" >> "$GITHUB_ENV"
+
+      - name: Artifact yukle / upload artifact
+        if: inputs.upload_artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ env.PUBLISH_ROOT }}
+          retention-days: 30
+
+      - name: Gecici klasoru temizle / clean staging
+        if: always() && inputs.upload_artifact
+        run: rm -rf "${PUBLISH_ROOT:-}"

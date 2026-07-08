@@ -1,0 +1,119 @@
+name: Deploy
+
+# Sürekli Dağıtım / Continuous Deployment
+# Elle tetiklenir, production onayi ister, saglik kontrolu ve otomatik geri alma icerir.
+# Manually triggered, requires production approval, includes health check and auto-rollback.
+
+on:
+  workflow_dispatch:
+    inputs:
+      description:
+        description: "Ne deploy ediliyor / What is being deployed"
+        required: true
+        type: string
+      source:
+        description: "Deploy kaynagi / Deploy source"
+        required: true
+        type: choice
+        options:
+          - build_from_source
+          - ci_artifact
+        default: build_from_source
+
+run-name: Deploy - ${{ github.actor }} - ${{ inputs.description }}
+
+concurrency:
+  group: deploy-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  # === DUZENLE / EDIT: servisleriniz (tek yapilandirma kaynagi) ===
+  # === EDIT: your services (single source of configuration) ===
+  # format: name|csproj|deploy_dir|service_name|health_url
+  SERVICES: |
+    web|src/Web/Web.csproj|/opt/myapp-web|myapp-web|http://127.0.0.1:5001
+    api|src/Api/Api.csproj|/opt/myapp-api|myapp-api|http://127.0.0.1:5200
+  ARTIFACT_NAME: app-publish
+
+jobs:
+  deploy:
+    runs-on: [ self-hosted ]   # DUZENLE / EDIT: runner etiketiniz / your runner label
+    environment: production    # onay kapisi bu ortama baglanir / approval gate binds to this environment
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy ozeti / summary
+        run: |
+          {
+            echo "## Deploy"
+            echo "- Yapan / by: **${{ github.actor }}**"
+            echo "- Kaynak / source: **${{ inputs.source }}**"
+            echo "- Commit: $(git log -1 --pretty=%s)"
+            echo "- Not / note: ${{ inputs.description }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # DUZENLE / EDIT (opsiyonel): veritabani/altyapi hazirligi
+      # - name: Altyapi hazir / ensure infra
+      #   run: bash scripts/ensure-infra.sh
+
+      - name: Build + test (kaynaktan) / (from source)
+        if: inputs.source == 'build_from_source'
+        uses: ./.github/actions/build-test
+
+      - name: Son basarili CI artifactini indir / download latest successful CI artifact
+        if: inputs.source == 'ci_artifact'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_ID="$(gh run list \
+            --repo "${{ github.repository }}" \
+            --workflow=ci.yml \
+            --branch="${{ github.ref_name }}" \
+            --status=success \
+            --limit=1 \
+            --json databaseId -q '.[0].databaseId')"
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "Basarili CI run bulunamadi / no successful CI run found"
+            exit 1
+          fi
+          ROOT="$(mktemp -d)"
+          gh run download "$RUN_ID" -R "${{ github.repository }}" -n "$ARTIFACT_NAME" -D "$ROOT"
+          echo "ARTIFACT_ROOT=$ROOT" >> "$GITHUB_ENV"
+
+      - name: Mevcut surumu yedekle / back up current release
+        run: bash scripts/pipeline.sh backup
+
+      - name: Yayinla (kaynaktan) / publish (from source)
+        if: inputs.source == 'build_from_source'
+        run: bash scripts/pipeline.sh publish-source
+
+      - name: Yayinla (artifact) / publish (artifact)
+        if: inputs.source == 'ci_artifact'
+        run: bash scripts/pipeline.sh deploy-artifacts
+
+      - name: Deploy bilgisini yaz / write deploy info
+        env:
+          GIT_SHA: ${{ github.sha }}
+          DEPLOYED_BY: ${{ github.actor }}
+          DEPLOY_NOTE: ${{ inputs.description }}
+        run: bash scripts/pipeline.sh write-info
+
+      - name: Servisleri yeniden baslat / restart services
+        run: bash scripts/pipeline.sh restart
+
+      - name: Saglik kontrolu / health check
+        id: health
+        continue-on-error: true
+        run: bash scripts/pipeline.sh health
+
+      - name: Basarisizsa otomatik geri al / auto-rollback on failure
+        if: steps.health.outcome == 'failure'
+        run: |
+          bash scripts/pipeline.sh rollback
+          bash scripts/pipeline.sh health || true
+          echo "- Otomatik rollback yapildi / auto-rollback performed" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Deploy basarisiz / deploy failed
+        if: steps.health.outcome == 'failure'
+        run: exit 1
