@@ -19,7 +19,8 @@
 - [7. Manuel Geri Alma / Manual Rollback](#7-manuel-geri-alma--manual-rollback)
 - [8. Denetlenebilirlik / Auditability](#8-denetlenebilirlik--auditability)
 - [9. Eşzamanlılık Koruması / Concurrency Guard](#9-eşzamanlılık-koruması--concurrency-guard)
-- [Tek yapılandırma kaynağı / Single source of configuration](#tek-yapılandırma-kaynağı--single-source-of-configuration)
+- [Kod yazmazsınız — sadece bilgi girersiniz / No code — you only fill in values](#kod-yazmazsınız--sadece-bilgi-girirsiniz--no-code--you-only-fill-in-values)
+- [Kurulum checklist / Setup checklist](#kurulum-checklist--setup-checklist)
 - [Uçtan uca senaryolar / End-to-end scenarios](#uçtan-uca-senaryolar--end-to-end-scenarios)
 - [Hızlı başlangıç / Quick start](#hızlı-başlangıç--quick-start)
 - [Dosya yapısı / File structure](#dosya-yapısı--file-structure)
@@ -279,6 +280,57 @@ ConnectionStrings__CatalogConnection=Server=10.0.0.5,1433;User Id=sa;Password=..
 ConnectionStrings__IdentityConnection=Server=10.0.0.5,1433;User Id=sa;Password=...;TrustServerCertificate=true
 SomeApi__ApiKey=sk-...
 ```
+
+---
+
+## Kurulum checklist / Setup checklist
+
+**TR:** Aşağıdaki tablo, projeyi kullanıma hazır hâle getirmek için **neyi nerede değiştireceğinizi** özetler. Workflow veya script dosyalarını düzenlemeniz gerekmez.
+
+**EN:** The table below summarizes **what to change where** to make the project ready to use. You do not need to edit workflow or script files.
+
+### Neyi nerede değiştirirsiniz? / What to change where
+
+| Nerede / Where | Ne değişir / What you change | Zorunlu / Required | Kaç kez / How often |
+|---|---|---|---|
+| GitHub repo → **Use this template** | Yeni repo oluşturma / create your copy | Evet / Yes | 1 kez / once |
+| Repo kökü | `templates/.github` → `.github`, `templates/scripts` → `scripts` kopyala / copy | Evet / Yes | 1 kez / once |
+| **Settings → Secrets and variables → Actions → Variables** → `SERVICES` | Proje yolu, deploy dizini, servis adı, port/IP (`health_url`) / project path, deploy dir, service name, port/IP | Evet / Yes | Proje başına / per project |
+| Aynı yer → `RUNNER_LABEL` | Runner etiketi (çoğu zaman `self-hosted`) / runner label | Hayır / No | Gerekirse / if needed |
+| Aynı yer → `ARTIFACT_NAME` | Artifact adı (varsayılan `app-publish`) / artifact name | Hayır / No | Gerekirse / if needed |
+| **Settings → Secrets and variables → Actions → Secrets** → `APP_ENV` | DB bağlantı dizeleri, API anahtarları, IP'li gizli ayarlar / connection strings, API keys | Hayır / No | Gerekirse / if needed |
+| **Settings → Environments** → `production` | Onaylayan kişi (**required reviewers**) / approver | Evet / Yes | 1 kez / once |
+| Host (Linux/WSL) | `sudo SERVICES="..." bash scripts/setup-host.sh` (GitHub'daki `SERVICES` ile **aynı**) / same as GitHub `SERVICES` | Evet / Yes | 1 kez / once |
+
+### Kullanıma hazır olma sırası / Ready-to-use sequence
+
+**TR**
+
+1. [github.com/Dedmoo/cicd-blueprint](https://github.com/Dedmoo/cicd-blueprint) → **Use this template** → yeni repo oluştur
+2. `templates/.github` ve `templates/scripts` klasörlerini repo **köküne** taşı (sadece `templates/` içinde bırakma — CI çalışmaz)
+3. **Settings → Secrets and variables → Actions → Variables** → `SERVICES` ekle (kendi proje yolların, portların, `/opt/...` dizinlerin)
+4. (Opsiyonel) **Secrets** → `APP_ENV`: bağlantı dizeleri / API anahtarları
+5. **Settings → Environments** → `production` + **required reviewers**
+6. Runner makinesinde bir kez: `sudo SERVICES="..." bash scripts/setup-host.sh`
+7. `main`'e push → CI yeşil olmalı
+8. **Actions → Deploy** → açıklama gir → onay ver → canlı
+
+**EN**
+
+1. [github.com/Dedmoo/cicd-blueprint](https://github.com/Dedmoo/cicd-blueprint) → **Use this template** → create a new repository
+2. Move `templates/.github` and `templates/scripts` to the repository **root** (do not leave them only under `templates/` — CI will not run)
+3. **Settings → Secrets and variables → Actions → Variables** → add `SERVICES` (your project paths, ports, `/opt/...` dirs)
+4. (Optional) **Secrets** → `APP_ENV`: connection strings / API keys
+5. **Settings → Environments** → `production` + **required reviewers**
+6. Once on the runner machine: `sudo SERVICES="..." bash scripts/setup-host.sh`
+7. Push to `main` → CI must be green
+8. **Actions → Deploy** → enter description → approve → live
+
+### Düzenlenmeyen dosyalar / Files you do not edit
+
+**TR:** `ci.yml`, `deploy.yml`, `rollback.yml`, `pipeline.sh` ve diğer şablon dosyalarına dokunmayın. Tüm proje bilgileri yalnızca GitHub **Variables** / **Secrets** üzerinden okunur.
+
+**EN:** Do not touch `ci.yml`, `deploy.yml`, `rollback.yml`, `pipeline.sh` or other template files. All project values are read only from GitHub **Variables** / **Secrets**.
 
 ---
 
