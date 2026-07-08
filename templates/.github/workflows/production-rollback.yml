@@ -1,11 +1,11 @@
-name: Rollback
+name: Production Rollback
 
 # Geri Alma / Rollback
 # Uretimi bilincli olarak eski bir duruma dondurur.
 # Deliberately returns production to an earlier state.
 #
-# BU DOSYAYI DUZENLEMENIZE GEREK YOK. Ayni repo Variables/Secrets kullanilir (bkz. deploy.yml).
-# NO NEED TO EDIT THIS FILE. Uses the same repo Variables/Secrets (see deploy.yml).
+# BU DOSYAYI DUZENLEMENIZE GEREK YOK. Ayni repo Variables/Secrets kullanilir (bkz. production-deploy.yml).
+# NO NEED TO EDIT THIS FILE. Uses the same repo Variables/Secrets (see production-deploy.yml).
 
 on:
   workflow_dispatch:
@@ -27,7 +27,9 @@ on:
         required: false
         type: string
 
-run-name: Rollback - ${{ github.actor }} - ${{ inputs.description }}
+# run-name onay listesinde ve run gecmisinde gorunur.
+# run-name is visible in the approval list and run history.
+run-name: "Production Rollback | ${{ inputs.description }} | mode: ${{ inputs.mode }} | by ${{ github.actor }}"
 
 concurrency:
   group: deploy-${{ github.repository }}
@@ -47,7 +49,31 @@ env:
   SSH_KNOWN_HOSTS: ${{ vars.SSH_KNOWN_HOSTS }}
 
 jobs:
+  # prepare: onaysiz, hemen kosar. Onaylayan kisi bu job'in ozetini gorur, sonra onay verir.
+  # prepare: runs without approval. The reviewer sees this job's summary before approving.
+  prepare:
+    runs-on: ${{ vars.RUNNER_LABEL || 'self-hosted' }}
+    steps:
+      - name: Rollback on bilgisi / pre-rollback info
+        run: |
+          {
+            echo "## Rollback Onay Ozeti / Approval Summary"
+            echo ""
+            echo "| Alan / Field | Deger / Value |"
+            echo "|---|---|"
+            echo "| Tetikleyen / Triggered by | **${{ github.actor }}** |"
+            echo "| Sebep / Reason | **${{ inputs.description }}** |"
+            echo "| Mod / Mode | \`${{ inputs.mode }}\` |"
+            if [ "${{ inputs.mode }}" = "specific_commit" ]; then
+              echo "| Hedef commit / Target commit | \`${{ inputs.commit_sha }}\` |"
+            fi
+            echo ""
+            echo "> Onay vermeden once yukaridaki bilgileri dogrulayin."
+            echo "> Verify the information above before approving."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   rollback:
+    needs: prepare
     runs-on: ${{ vars.RUNNER_LABEL || 'self-hosted' }}
     environment: production
     steps:
@@ -93,5 +119,5 @@ jobs:
             echo "## Rollback"
             echo "- Yapan / by: **${{ github.actor }}**"
             echo "- Mod / mode: **${{ inputs.mode }}**"
-            echo "- Not / note: ${{ inputs.description }}"
+            echo "- Sebep / reason: ${{ inputs.description }}"
           } >> "$GITHUB_STEP_SUMMARY"

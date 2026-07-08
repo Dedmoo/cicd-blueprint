@@ -1,4 +1,4 @@
-name: CI
+name: Continuous Integration
 
 # Sürekli Entegrasyon / Continuous Integration
 # main dalina her push ve PR'de otomatik derleme + test.
@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   build-test:
-    uses: ./.github/workflows/reusable-dotnet-ci.yml
+    uses: ./.github/workflows/reusable-dotnet-build.yml
     with:
       configuration: Release
       # Sadece main'e push'ta artifact uret / build artifacts only on push to main

@@ -1,6 +1,6 @@
-name: Reusable .NET CI
+name: Reusable .NET Build
 
-# Yeniden kullanilabilir CI / Reusable CI
+# Yeniden kullanilabilir derleme/test / Reusable build and test
 # Baska .NET depolarindan da workflow_call ile cagrilabilir.
 # Can be called from other .NET repositories via workflow_call.
 

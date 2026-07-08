@@ -2,7 +2,7 @@
 
 ## A Project-Agnostic Continuous Integration and Continuous Deployment Pattern on a Self-Hosted Runner
 
-**Document language:** English (Turkish version: [`ci-cd-blueprint.tr.md`](./ci-cd-blueprint.tr.md))
+**Document language:** English (Turkish version: [`dotnet-cicd-template.tr.md`](./dotnet-cicd-template.tr.md))
 **Goal:** A reusable CI/CD pattern adaptable to any .NET project in about 15 minutes.
 
 ---
@@ -99,13 +99,13 @@ name|csproj|deploy_dir|service_name|health_url
 | `service_name` | systemd service name | `myapp-web` |
 | `health_url` | Health check base URL | `http://127.0.0.1:5001` |
 
-This block is defined in one place as a **repo variable (`vars.SERVICES`)** on GitHub; `ci.yml`, `deploy.yml` and `rollback.yml` read this variable (no file editing needed). In host setup, the same value is passed once to `setup-host.sh` as an environment variable. CI uses only the first two fields (`name|csproj`); the rest are ignored.
+This block is defined in one place as a **repo variable (`vars.SERVICES`)** on GitHub; `continuous-integration.yml`, `production-deploy.yml` and `production-rollback.yml` read this variable (no file editing needed). In host setup, the same value is passed once to `setup-host.sh` as an environment variable. CI uses only the first two fields (`name|csproj`); the rest are ignored.
 
 **Derived values:** The `dll` name is derived from `csproj` (`Web.csproj` → `Web.dll`), and the binding port is extracted automatically from `health_url`. This keeps `SERVICES` free of redundant fields.
 
 ## 4. Pipeline Components
 
-### 4.1 CI (`ci.yml` + `reusable-dotnet-ci.yml` + `build-test` action)
+### 4.1 CI (`continuous-integration.yml` + `reusable-dotnet-build.yml` + `build-test` action)
 
 - **Trigger:** Every `push` and every `pull_request` to `main`.
 - **Does:** .NET version validation → NuGet cache → restore → build → test.
@@ -113,7 +113,7 @@ This block is defined in one place as a **repo variable (`vars.SERVICES`)** on G
 - **Why decoupled?** This tested output can later be deployed unchanged (*build-once, deploy-many*).
 - **Permissions:** Workflows run with least privilege (`permissions: contents: read`); the token's scope is not left needlessly broad.
 
-### 4.2 Deploy (`deploy.yml` + `pipeline.sh`)
+### 4.2 Deploy (`production-deploy.yml` + `pipeline.sh`)
 
 Manually triggered (`workflow_dispatch`), taking two inputs: `description` (mandatory) and `source`. The `source` default is **`ci_artifact`** (recommended): it uses the latest successful CI output and performs a **commit provenance check** — if the commit of the CI run that produced the artifact (`headSha`) does not match the deployed commit (`github.sha`), the deploy stops. `build_from_source` rebuilds from source at deploy time (for first setup or emergency/debug). Flow:
 
@@ -132,7 +132,7 @@ flowchart TB
 
 `pipeline.sh` subcommands: `backup`, `publish-source`, `deploy-artifacts`, `write-info`, `restart`, `health`, `rollback`. All read `SERVICES` and iterate over all services.
 
-### 4.3 Rollback (`rollback.yml`)
+### 4.3 Rollback (`production-rollback.yml`)
 
 Two modes: `previous_folder` (instant reversion from the `*.previous` backup) and `specific_commit` (builds and publishes a given commit). A health check runs at the end of both modes.
 
@@ -190,10 +190,10 @@ templates/
 │   │   └── build-test/
 │   │       └── action.yml         # version check + cache + restore/build/test
 │   └── workflows/
-│       ├── ci.yml                 # push/PR -> reusable CI
-│       ├── reusable-dotnet-ci.yml # build/test + (optional) single artifact
-│       ├── deploy.yml             # manual, approval-gated, health + auto-rollback
-│       └── rollback.yml           # previous_folder | specific_commit
+│       ├── continuous-integration.yml  # push/PR -> reusable CI
+│       ├── reusable-dotnet-build.yml   # build/test + (optional) single artifact
+│       ├── production-deploy.yml       # manual, approval-gated, health + auto-rollback
+│       └── production-rollback.yml     # previous_folder | specific_commit
 └── scripts/
     ├── pipeline.sh                # backup/publish/deploy/restart/health/rollback
     ├── verify-health.sh           # /health -> swagger/root fallback
@@ -208,7 +208,7 @@ templates/
 
 - **A single runner** is a single point of failure; multiple runners are recommended for critical environments.
 - **Zero-downtime deployment** is not provided; a brief outage may occur during restart. It can be extended with blue-green/canary.
-- **Database migrations** are not part of the pipeline; the optional "ensure infra" step in `deploy.yml` is reserved for this.
+- **Database migrations** are not part of the pipeline; the optional "ensure infra" step in `production-deploy.yml` is reserved for this.
 - **Secrets** should be kept in GitHub Secrets / a secret vault rather than in configuration files.
 
 ## 10. Appendix: Concrete Example (eShopOnWeb)

@@ -207,9 +207,9 @@ sequenceDiagram
 
 ## 7. Manuel Geri Alma / Manual Rollback
 
-**TR:** Ayrıca istediğiniz an bilinçli olarak geri dönebilirsiniz. `rollback.yml` iki mod sunar:
+**TR:** Ayrıca istediğiniz an bilinçli olarak geri dönebilirsiniz. `production-rollback.yml` iki mod sunar:
 
-**EN:** You can also deliberately revert at any time. `rollback.yml` offers two modes:
+**EN:** You can also deliberately revert at any time. `production-rollback.yml` offers two modes:
 
 | Mod / Mode | Ne yapar / What it does | Ne zaman / When |
 |---|---|---|
@@ -466,7 +466,7 @@ ssh-keyscan -p 22 10.0.0.5
 
 **TR (yerel / local — runner = sunucu)**
 
-1. [github.com/Dedmoo/cicd-blueprint](https://github.com/Dedmoo/cicd-blueprint) → **Use this template** → yeni repo oluştur
+1. [github.com/Dedmoo/dotnet-cicd-template](https://github.com/Dedmoo/dotnet-cicd-template) → **Use this template** → yeni repo oluştur
 2. `templates/.github` ve `templates/scripts` klasörlerini repo **köküne** taşı
 3. Variables: `DEPLOY_TARGET=local` (veya boş), `SERVICES`, `RUNNER_LABEL=self-hosted`
 4. (Opsiyonel) Secret `APP_ENV`
@@ -486,9 +486,9 @@ ssh-keyscan -p 22 10.0.0.5
 
 ### Düzenlenmeyen dosyalar / Files you do not edit
 
-**TR:** `ci.yml`, `deploy.yml`, `rollback.yml`, `pipeline.sh` ve diğer şablon dosyalarına dokunmayın. Tüm proje bilgileri yalnızca GitHub **Variables** / **Secrets** üzerinden okunur.
+**TR:** `continuous-integration.yml`, `production-deploy.yml`, `production-rollback.yml`, `pipeline.sh` ve diğer şablon dosyalarına dokunmayın. Tüm proje bilgileri yalnızca GitHub **Variables** / **Secrets** üzerinden okunur.
 
-**EN:** Do not touch `ci.yml`, `deploy.yml`, `rollback.yml`, `pipeline.sh` or other template files. All project values are read only from GitHub **Variables** / **Secrets**.
+**EN:** Do not touch `continuous-integration.yml`, `production-deploy.yml`, `production-rollback.yml`, `pipeline.sh` or other template files. All project values are read only from GitHub **Variables** / **Secrets**.
 
 ---
 
@@ -544,19 +544,19 @@ ssh-keyscan -p 22 10.0.0.5
 ## Dosya yapısı / File structure
 
 ```
-cicd-blueprint/
+dotnet-cicd-template/
 ├── README.md
 ├── docs/
-│   ├── ci-cd-blueprint.tr.md      # Türkçe playbook
-│   └── ci-cd-blueprint.en.md      # English playbook
+│   ├── dotnet-cicd-template.tr.md  # Türkçe playbook
+│   └── dotnet-cicd-template.en.md  # English playbook
 └── templates/
     ├── .github/
     │   ├── actions/build-test/action.yml     # sürüm doğrulama + cache + build/test
     │   └── workflows/
-    │       ├── ci.yml                         # push/PR -> reusable CI
-    │       ├── reusable-dotnet-ci.yml         # build/test + (opsiyonel) tek artifact
-    │       ├── deploy.yml                      # elle, onaylı, health + otomatik rollback
-    │       └── rollback.yml                    # previous_folder | specific_commit
+    │       ├── continuous-integration.yml     # push/PR -> reusable CI
+    │       ├── reusable-dotnet-build.yml      # build/test + (opsiyonel) tek artifact
+    │       ├── production-deploy.yml          # elle, onaylı, health + otomatik rollback
+    │       └── production-rollback.yml        # previous_folder | specific_commit
     └── scripts/
         ├── pipeline.sh            # local + remote deploy/rollback
         ├── ssh-remote.sh          # SSH key, rsync, remote commands
@@ -569,13 +569,21 @@ cicd-blueprint/
 
 ## Dokümantasyon / Documentation
 
+**TR:** Firmaya özel ayarlar (Variables/Secrets/Environments) için tek başvuru noktası:
+**EN:** Single reference for company-specific settings (Variables/Secrets/Environments):
+
+| Dil / Language | Belge / Document |
+|---|---|
+| Türkçe | [`docs/company-setup.tr.md`](./docs/company-setup.tr.md) |
+| English | [`docs/company-setup.en.md`](./docs/company-setup.en.md) |
+
 **TR:** Akademik düzeyde, ayrıntılı playbook (mimari, ilkeler, uyarlama rehberi, farklı yığınlar, kısıtlar):
 **EN:** Academic-level, detailed playbook (architecture, principles, adaptation guide, other stacks, limitations):
 
 | Dil / Language | Belge / Document |
 |---|---|
-| Türkçe | [`docs/ci-cd-blueprint.tr.md`](./docs/ci-cd-blueprint.tr.md) |
-| English | [`docs/ci-cd-blueprint.en.md`](./docs/ci-cd-blueprint.en.md) |
+| Türkçe | [`docs/dotnet-cicd-template.tr.md`](./docs/dotnet-cicd-template.tr.md) |
+| English | [`docs/dotnet-cicd-template.en.md`](./docs/dotnet-cicd-template.en.md) |
 
 > **TR:** Somut, doldurulmuş bir örnek için eShopOnWeb uyarlaması referans alınabilir. eShop yalnızca örnektir; bu şablonu kullanmak için gerekli değildir.
 > **EN:** For a concrete, filled-in example see the eShopOnWeb adaptation. eShop is only an example; it is not required to use this template.

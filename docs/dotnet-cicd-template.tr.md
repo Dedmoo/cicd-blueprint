@@ -2,7 +2,7 @@
 
 ## Kendinden Barındırmalı Çalıştırıcı Üzerinde Projeden Bağımsız Sürekli Entegrasyon ve Sürekli Dağıtım Deseni
 
-**Belge dili:** Türkçe (İngilizce sürüm: [`ci-cd-blueprint.en.md`](./ci-cd-blueprint.en.md))
+**Belge dili:** Türkçe (İngilizce sürüm: [`dotnet-cicd-template.en.md`](./dotnet-cicd-template.en.md))
 **Amaç:** Herhangi bir .NET projesine 15 dakikada uyarlanabilen, tekrar kullanılabilir bir CI/CD deseni.
 
 ---
@@ -99,13 +99,13 @@ name|csproj|deploy_dir|service_name|health_url
 | `service_name` | systemd servis adı | `myapp-web` |
 | `health_url` | Sağlık kontrolü taban adresi | `http://127.0.0.1:5001` |
 
-Bu blok, GitHub'da bir **repo değişkeni (`vars.SERVICES`)** olarak tek yerde tanımlanır; `ci.yml`, `deploy.yml` ve `rollback.yml` bu değişkeni okur (dosya düzenlemesi gerekmez). Host kurulumunda ise aynı değer `setup-host.sh`'ye ortam değişkeni olarak bir kez geçirilir. CI'de yalnızca ilk iki alan (`name|csproj`) kullanılır; diğerleri yok sayılır.
+Bu blok, GitHub'da bir **repo değişkeni (`vars.SERVICES`)** olarak tek yerde tanımlanır; `continuous-integration.yml`, `production-deploy.yml` ve `production-rollback.yml` bu değişkeni okur (dosya düzenlemesi gerekmez). Host kurulumunda ise aynı değer `setup-host.sh`'ye ortam değişkeni olarak bir kez geçirilir. CI'de yalnızca ilk iki alan (`name|csproj`) kullanılır; diğerleri yok sayılır.
 
 **Türetilen değerler:** `dll` adı `csproj`'den (`Web.csproj` → `Web.dll`), bağlanma portu ise `health_url`'den otomatik çıkarılır. Böylece `SERVICES` gereksiz alanlarla şişmez.
 
 ## 4. Boru Hattı Bileşenleri
 
-### 4.1 CI (`ci.yml` + `reusable-dotnet-ci.yml` + `build-test` eylemi)
+### 4.1 CI (`continuous-integration.yml` + `reusable-dotnet-build.yml` + `build-test` eylemi)
 
 - **Tetikleme:** `main`'e her `push` ve her `pull_request`.
 - **Yapar:** .NET sürüm doğrulama → NuGet cache → restore → build → test.
@@ -113,7 +113,7 @@ Bu blok, GitHub'da bir **repo değişkeni (`vars.SERVICES`)** olarak tek yerde t
 - **Neden ayrık?** Testten geçen bu çıktı, daha sonra dağıtımda değişmeden kullanılabilir (*build-once, deploy-many*).
 - **İzinler:** İş akışları en az yetkiyle çalışır (`permissions: contents: read`); token'ın etki alanı gereksiz yere geniş bırakılmaz.
 
-### 4.2 Deploy (`deploy.yml` + `pipeline.sh`)
+### 4.2 Deploy (`production-deploy.yml` + `pipeline.sh`)
 
 Elle tetiklenir (`workflow_dispatch`), iki girdi alır: `description` (zorunlu açıklama) ve `source`. `source` varsayılanı **`ci_artifact`**'tır (önerilen): son başarılı CI çıktısını kullanır ve **commit köken doğrulaması** yapar — artifact'ı üreten CI çalışmasının commit'i (`headSha`) ile deploy edilen commit (`github.sha`) eşleşmezse deploy durur. `build_from_source` ise deploy anında kaynaktan derler (ilk kurulum veya acil/hata ayıklama için). Akış:
 
@@ -132,7 +132,7 @@ flowchart TB
 
 `pipeline.sh` alt komutları: `backup`, `publish-source`, `deploy-artifacts`, `write-info`, `restart`, `health`, `rollback`. Hepsi `SERVICES`'i okur ve tüm servisler üzerinde döner.
 
-### 4.3 Rollback (`rollback.yml`)
+### 4.3 Rollback (`production-rollback.yml`)
 
 İki mod: `previous_folder` (`*.previous` yedeğinden anında dönüş) ve `specific_commit` (verilen commit'i derleyip yayımlar). Her iki modda sonunda sağlık kontrolü koşulur.
 
@@ -190,10 +190,10 @@ templates/
 │   │   └── build-test/
 │   │       └── action.yml         # sürüm doğrulama + cache + restore/build/test
 │   └── workflows/
-│       ├── ci.yml                 # push/PR -> reusable CI
-│       ├── reusable-dotnet-ci.yml # build/test + (opsiyonel) tek artifact
-│       ├── deploy.yml             # elle, onaylı, health + otomatik rollback
-│       └── rollback.yml           # previous_folder | specific_commit
+│       ├── continuous-integration.yml  # push/PR -> reusable CI
+│       ├── reusable-dotnet-build.yml   # build/test + (opsiyonel) tek artifact
+│       ├── production-deploy.yml       # elle, onaylı, health + otomatik rollback
+│       └── production-rollback.yml     # previous_folder | specific_commit
 └── scripts/
     ├── pipeline.sh                # backup/publish/deploy/restart/health/rollback
     ├── verify-health.sh           # /health -> swagger/root fallback
@@ -208,7 +208,7 @@ templates/
 
 - **Tek çalıştırıcı** tek hata noktasıdır; kritik ortamlarda birden çok çalıştırıcı önerilir.
 - **Kesintisiz dağıtım (zero-downtime)** yoktur; yeniden başlatma sırasında kısa kesinti olabilir. Mavi-yeşil/canary ile genişletilebilir.
-- **Veritabanı geçişleri (migration)** boru hattına dâhil değildir; `deploy.yml` içindeki opsiyonel "altyapı hazır" adımı bunun için ayrılmıştır.
+- **Veritabanı geçişleri (migration)** boru hattına dâhil değildir; `production-deploy.yml` içindeki opsiyonel "altyapı hazır" adımı bunun için ayrılmıştır.
 - **Gizli bilgiler** yapılandırma dosyalarında değil, GitHub Secrets / bir secret vault içinde tutulmalıdır.
 
 ## 10. Ek: Somut Örnek (eShopOnWeb)

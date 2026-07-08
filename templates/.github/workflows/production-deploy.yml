@@ -1,4 +1,4 @@
-name: Deploy
+name: Production Deploy
 
 # Sürekli Dağıtım / Continuous Deployment
 # Elle tetiklenir, production onayi ister, saglik kontrolu ve otomatik geri alma icerir.
@@ -33,7 +33,11 @@ on:
           - build_from_source
         default: ci_artifact
 
-run-name: Deploy - ${{ github.actor }} - ${{ inputs.description }}
+# run-name onay listesinde ve run gecmisinde gorunur.
+# Onaylayan kisi buradan deploy aciklamasini ve commit'i gorebilir.
+# run-name is visible in the approval list and run history.
+# The reviewer can see the deploy description and commit from here.
+run-name: "Production Deploy | ${{ inputs.description }} | by ${{ github.actor }} | ${{ github.sha }}"
 
 concurrency:
   group: deploy-${{ github.repository }}
@@ -55,7 +59,41 @@ env:
   SSH_KNOWN_HOSTS: ${{ vars.SSH_KNOWN_HOSTS }}
 
 jobs:
+  # prepare: onaysiz, hemen kosar. Onaylayan kisi bu job'in ozetini gorur, sonra onay verir.
+  # prepare: runs without approval. The reviewer sees this job's summary before approving.
+  prepare:
+    runs-on: ${{ vars.RUNNER_LABEL || 'self-hosted' }}
+    outputs:
+      commit_subject: ${{ steps.info.outputs.commit_subject }}
+      commit_hash: ${{ steps.info.outputs.commit_hash }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy on bilgisi / pre-deploy info
+        id: info
+        run: |
+          SUBJECT="$(git log -1 --pretty=%s)"
+          SHORT_SHA="$(git log -1 --pretty=%h)"
+          echo "commit_subject=$SUBJECT" >> "$GITHUB_OUTPUT"
+          echo "commit_hash=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Deploy Onay Ozeti / Approval Summary"
+            echo ""
+            echo "| Alan / Field | Deger / Value |"
+            echo "|---|---|"
+            echo "| Tetikleyen / Triggered by | **${{ github.actor }}** |"
+            echo "| Aciklama / Description | **${{ inputs.description }}** |"
+            echo "| Commit | \`${SHORT_SHA}\` — ${SUBJECT} |"
+            echo "| Kaynak / Source | \`${{ inputs.source }}\` |"
+            echo "| Hedef / Target | \`${{ vars.DEPLOY_TARGET || 'local' }}\` |"
+            echo ""
+            echo "> Onay vermeden once yukaridaki bilgileri dogrulayin."
+            echo "> Verify the information above before approving."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   deploy:
+    needs: prepare
     runs-on: ${{ vars.RUNNER_LABEL || 'self-hosted' }}
     environment: production    # onay kapisi bu ortama baglanir / approval gate binds to this environment
     steps:
@@ -93,10 +131,10 @@ jobs:
           {
             echo "## Deploy"
             echo "- Yapan / by: **${{ github.actor }}**"
+            echo "- Aciklama / description: **${{ inputs.description }}**"
+            echo "- Commit: \`${{ needs.prepare.outputs.commit_hash }}\` — ${{ needs.prepare.outputs.commit_subject }}"
             echo "- Mod / mode: **${DEPLOY_TARGET}**"
             echo "- Kaynak / source: **${{ inputs.source }}**"
-            echo "- Commit: $(git log -1 --pretty=%s)"
-            echo "- Not / note: ${{ inputs.description }}"
             if [ "$DEPLOY_TARGET" = "remote" ]; then
               echo "- Hedef / target: **${SSH_USER}@${SSH_HOST}:${SSH_PORT}**"
             fi
@@ -117,7 +155,7 @@ jobs:
         run: |
           META="$(gh run list \
             --repo "${{ github.repository }}" \
-            --workflow=ci.yml \
+            --workflow=continuous-integration.yml \
             --branch="${{ github.ref_name }}" \
             --status=success \
             --limit=1 \
