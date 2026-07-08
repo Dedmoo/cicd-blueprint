@@ -14,12 +14,18 @@ Türkçe: [`beginner-walkthrough.tr.md`](./beginner-walkthrough.tr.md)
 
 ## What does this system do? (30 seconds)
 
-1. When code is pushed to GitHub, a computer **builds and tests it automatically** (Continuous Integration).
-2. When you ask to go live, an authorized person **approves**.
-3. After approval, the code is **copied to a remote server** and the app restarts.
-4. If the app does not come up healthy, the system **tries to roll back**.
+The goal is: **ship a new version to live.** People using the site / app pick up the update as they browse or refresh (e.g. F5). There is no “announce downtime and make everyone manually close / reset the app” ritual.
 
-Your job: fill in the settings once. After that it is mostly buttons + approval.
+In short:
+
+1. When code is pushed to GitHub it is **built and tested automatically**.
+2. An authorized person **approves** going live.
+3. After approval the new version is **published to the remote server** — users do not run a separate “reset / restart ceremony”; their next requests (e.g. refresh) get the updated version.
+4. If the new version does not come up healthy, the system **tries to return to the previous version**.
+
+Your job: fill in the settings once. After that: write code → get approval → live updates.
+
+> Technical note (for the curious): Under the hood the server process is refreshed briefly. We are not selling “restart” as the product feature. The product goal is quiet, approved updates for users.
 
 ---
 
@@ -53,7 +59,7 @@ Words you will see:
 | **Environment** | The “ask for approval before production” box |
 | **Runner** | The computer GitHub uses to run commands for you |
 | **SSH** | Remote login with a key (no password each time) |
-| **Deploy** | Going live |
+| **Deploy** | Going live / publishing the new version to users |
 
 ---
 

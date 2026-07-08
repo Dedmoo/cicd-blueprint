@@ -14,12 +14,18 @@ English: [`beginner-walkthrough.en.md`](./beginner-walkthrough.en.md)
 
 ## Bu sistem ne yapıyor? (30 saniye)
 
-1. Kod GitHub’a yazılınca bilgisayar **otomatik derler ve test eder** (Continuous Integration).
-2. Siz “canlıya al” derseniz, yetkili biri **onaylar**.
-3. Onaydan sonra kod **uzak sunucuya** kopyalanır ve uygulama yeniden başlar.
-4. Uygulama ayağa kalkmazsa sistem **eski hâline geri almaya** çalışır.
+Amaç şudur: **yeni sürümü canlıya almak.** Siteyi / programı kullanan kişi sayfada gezerken veya F5 yaptığında güncellemeyi görür; “herkese duyuru yapıp uygulamayı elle kapatın / resetleyin” diye bir süreç olmaz.
 
-Sizin işiniz: bir kez ayarları doldurmak. Sonrası buton + onay.
+Kısaca akış:
+
+1. Kod GitHub’a yazılınca otomatik **derlenir ve test edilir**.
+2. Yetkili biri “canlıya al” isteğini **onaylar**.
+3. Onaydan sonra yeni sürüm **uzak sunucuya yayınlanır** — kullanıcılar ekstra bir “reset / kapat-aç” töreni yapmaz; bir sonraki isteklerinde (ör. sayfa yenileme) güncel hâli alırlar.
+4. Yeni sürüm ayağa kalkmazsa sistem **önceki sürüme dönmeye** çalışır.
+
+Sizin işiniz: ayarları bir kez doldurmak. Sonrası: kod yaz → onay → canlı güncellenir.
+
+> Teknik not (merak eden için): Arka planda sunucu süreci kısaca yenilenir; bunu “ürün özelliği: reset” diye satmıyoruz. Amacımız kullanıcıya sessiz, onaylı güncelleme vermektir.
 
 ---
 
@@ -53,7 +59,7 @@ Anlamadığınız terimler:
 | **Environment** | “Canlıya çıkmadan önce onay iste” kutusu |
 | **Runner** | GitHub’ın sizin için komut çalıştırdığı bilgisayar |
 | **SSH** | Sunucuya şifresiz / anahtarla uzak bağlantı |
-| **Deploy** | Canlıya alma |
+| **Deploy** | Canlıya alma / kullanıcılara yeni sürümü yayınlama |
 
 ---
 
