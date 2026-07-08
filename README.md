@@ -7,10 +7,40 @@
 **TR — İlk kez mi kuruyorsunuz?** Öğrenmeye gerek yok: [`docs/beginner-walkthrough.tr.md`](./docs/beginner-walkthrough.tr.md)  
 **EN — First time setup?** No theory needed: [`docs/beginner-walkthrough.en.md`](./docs/beginner-walkthrough.en.md)
 
+## Dokümantasyon / Documentation
+
+**TR:** Hiç bilmeyen / ilk kez kuran için (öğrenme yok — tıklaya tıklaya):
+**EN:** Complete beginners / first-time setup (no theory — click by click):
+
+| Dil / Language | Belge / Document |
+|---|---|
+| Türkçe | [`docs/beginner-walkthrough.tr.md`](./docs/beginner-walkthrough.tr.md) |
+| English | [`docs/beginner-walkthrough.en.md`](./docs/beginner-walkthrough.en.md) |
+
+**TR:** Firmaya özel ayarlar (Variables/Secrets/Environments) — tablo referansı:
+**EN:** Company-specific settings (Variables/Secrets/Environments) — table reference:
+
+| Dil / Language | Belge / Document |
+|---|---|
+| Türkçe | [`docs/company-setup.tr.md`](./docs/company-setup.tr.md) |
+| English | [`docs/company-setup.en.md`](./docs/company-setup.en.md) |
+
+**TR:** Akademik düzeyde, ayrıntılı playbook (mimari, ilkeler, uyarlama rehberi, farklı yığınlar, kısıtlar):
+**EN:** Academic-level, detailed playbook (architecture, principles, adaptation guide, other stacks, limitations):
+
+| Dil / Language | Belge / Document |
+|---|---|
+| Türkçe | [`docs/dotnet-cicd-template.tr.md`](./docs/dotnet-cicd-template.tr.md) |
+| English | [`docs/dotnet-cicd-template.en.md`](./docs/dotnet-cicd-template.en.md) |
+
+> **TR:** Somut, doldurulmuş bir örnek için eShopOnWeb uyarlaması referans alınabilir. eShop yalnızca örnektir; bu şablonu kullanmak için gerekli değildir.
+> **EN:** For a concrete, filled-in example see the eShopOnWeb adaptation. eShop is only an example; it is not required to use this template.
+
 ---
 
 ## İçindekiler / Table of Contents
 
+- [Dokümantasyon / Documentation](#dokümantasyon--documentation)
 - [Özellikler / Features](#özellikler--features)
 - [Genel süreç akışı / Overall process flow](#genel-süreç-akışı--overall-process-flow)
 - [1. Sürekli Entegrasyon (CI) / Continuous Integration](#1-sürekli-entegrasyon-ci--continuous-integration)
@@ -28,7 +58,6 @@
 - [Uçtan uca senaryolar / End-to-end scenarios](#uçtan-uca-senaryolar--end-to-end-scenarios)
 - [Hızlı başlangıç / Quick start](#hızlı-başlangıç--quick-start)
 - [Dosya yapısı / File structure](#dosya-yapısı--file-structure)
-- [Dokümantasyon / Documentation](#dokümantasyon--documentation)
 
 ---
 
@@ -580,34 +609,3 @@ dotnet-cicd-template/
         ├── verify-health.sh
         └── setup-host.sh          # yerel systemd kurulumu
 ```
-
----
-
-## Dokümantasyon / Documentation
-
-**TR:** Hiç bilmeyen / ilk kez kuran için (öğrenme yok — tıklaya tıklaya):
-**EN:** Complete beginners / first-time setup (no theory — click by click):
-
-| Dil / Language | Belge / Document |
-|---|---|
-| Türkçe | [`docs/beginner-walkthrough.tr.md`](./docs/beginner-walkthrough.tr.md) |
-| English | [`docs/beginner-walkthrough.en.md`](./docs/beginner-walkthrough.en.md) |
-
-**TR:** Firmaya özel ayarlar (Variables/Secrets/Environments) — tablo referansı:
-**EN:** Company-specific settings (Variables/Secrets/Environments) — table reference:
-
-| Dil / Language | Belge / Document |
-|---|---|
-| Türkçe | [`docs/company-setup.tr.md`](./docs/company-setup.tr.md) |
-| English | [`docs/company-setup.en.md`](./docs/company-setup.en.md) |
-
-**TR:** Akademik düzeyde, ayrıntılı playbook (mimari, ilkeler, uyarlama rehberi, farklı yığınlar, kısıtlar):
-**EN:** Academic-level, detailed playbook (architecture, principles, adaptation guide, other stacks, limitations):
-
-| Dil / Language | Belge / Document |
-|---|---|
-| Türkçe | [`docs/dotnet-cicd-template.tr.md`](./docs/dotnet-cicd-template.tr.md) |
-| English | [`docs/dotnet-cicd-template.en.md`](./docs/dotnet-cicd-template.en.md) |
-
-> **TR:** Somut, doldurulmuş bir örnek için eShopOnWeb uyarlaması referans alınabilir. eShop yalnızca örnektir; bu şablonu kullanmak için gerekli değildir.
-> **EN:** For a concrete, filled-in example see the eShopOnWeb adaptation. eShop is only an example; it is not required to use this template.
