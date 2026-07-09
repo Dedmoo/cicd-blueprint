@@ -116,7 +116,7 @@ printf '%s\n' "${SERVICES:?SERVICES ortam degiskeni tanimli degil / SERVICES env
         echo "  servis kullanicisi olusturuldu / service user created: $svc_user"
       fi
 
-      # Her renk icin systemd birimi / systemd unit for each colo
+      # Her renk icin systemd birimi / systemd unit for each color
       for color in blue green; do
         unit_name="${svc}-${color}"
         unit_dir="${dd}-${color}"

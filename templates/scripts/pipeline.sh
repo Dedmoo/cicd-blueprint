@@ -170,8 +170,8 @@ color_target() {
 }
 
 # Yardimci turetici fonksiyonlar / Derived path helpers
-dir_for()  { printf '%s-%s' "$1" "$2"; }                     # (deploy_dir, color) -> deploy_dir-colo
-unit_for() { printf '%s-%s' "$1" "$2"; }                     # (svc, color) -> svc-colo
+dir_for()  { printf '%s-%s' "$1" "$2"; }                     # (deploy_dir, color) -> deploy_dir-color
+unit_for() { printf '%s-%s' "$1" "$2"; }                     # (svc, color) -> svc-color
 sock_for() { printf '/run/cicd/%s-%s.sock' "$1" "$2"; }      # (svc, color) -> socket path
 # Servis hesabi adi: setup-host.sh ile ayni konvansiyon (dusuk yetkili, login yok).
 # Service account name: same convention as setup-host.sh (low-privilege, no login).

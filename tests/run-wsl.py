@@ -17,6 +17,7 @@ def copy_scripts() -> None:
     for pattern in (
         "templates/scripts/*.sh",
         "tests/*.sh",
+        "tests/*.py",
         "templates/.github/workflows/*.yml",
         ".github/workflows/*.yml",
     ):
@@ -41,6 +42,7 @@ def run(cmd: list[str], check: bool = True) -> int:
 def main() -> None:
     copy_scripts()
     os.chdir(DST)
+    run(["python3", "tests/scan-local-vars.py"])
     run(["bash", "tests/static-check.sh"])
     run(["sudo", "bash", "tests/state-test.sh"])
     run(["sudo", "bash", "tests/remote-sim-setup.sh"])
