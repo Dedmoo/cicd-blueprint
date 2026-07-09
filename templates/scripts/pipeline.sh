@@ -218,17 +218,19 @@ target_publish_dir() {
   local staging="$1"
   local dest="$2"
   if is_remote; then
-    # Dizini root ile olustur, sonra deploy kullanicisina devret: boylece rsync
-    # (deploy kullanicisi olarak calisir) dizine yazabilir. chown, rsync'ten ONCE
-    # yapilmali; aksi halde root sahipli dizine yazma "Permission denied" verir.
-    # Create the dir as root, then hand it to the deploy user so rsync (which runs
-    # as the deploy user) can write into it. chown MUST happen BEFORE rsync;
-    # otherwise writing into a root-owned dir fails with "Permission denied".
+    # Dizini root ile olustur, deploy kullanicisina devret (rsync yazabilsin).
+    # rsync sonrasi grup cicd + 750/640: servis kullanicisi CHDIR okuyabilsin.
+    # Create as root, hand to deploy user for rsync. After rsync set group cicd
+    # and 750/640 so the service account can CHDIR and read binaries.
     remote_sudo "mkdir -p '$dest' && chown -R '${SSH_USER}':'${SSH_USER}' '$dest'"
     remote_rsync "${staging}/" "${dest}/"
+    remote_sudo "chown -R '${SSH_USER}:cicd' '${dest}' && find '${dest}' -type d -exec chmod 750 {} + && find '${dest}' -type f -exec chmod 640 {} +"
   else
     mkdir -p "$dest"
     rsync -a --delete "${staging}/" "${dest}/"
+    chown -R "${SSH_USER:-root}:cicd" "${dest}" 2>/dev/null || true
+    find "${dest}" -type d -exec chmod 750 {} + 2>/dev/null || true
+    find "${dest}" -type f -exec chmod 640 {} + 2>/dev/null || true
   fi
 }
 
@@ -269,6 +271,36 @@ target_write_info_one() {
   else
     [ -d "$dest_dir" ] || return 0
     printf '%s' "$info" > "${dest_dir}/.deploy-info"
+  fi
+}
+
+target_stop_one() {
+  local unit="$1"
+  # Idle renk deploy oncesi durdurulur: calisan surec DLL kilidi rsync/publish'i bozabilir.
+  # Stop idle color before deploy: a running process can lock DLLs and break rsync/publish.
+  if is_remote; then
+    remote_sudo "systemctl stop '${unit}' || true"
+    remote_sudo_stdin "$unit" <<'STOPWAIT'
+unit="$1"
+for _ in $(seq 1 20); do
+  if systemctl is-active --quiet "$unit" 2>/dev/null; then
+    sleep 1
+  else
+    exit 0
+  fi
+done
+exit 1
+STOPWAIT
+  else
+    systemctl stop "$unit" || true
+    for _ in $(seq 1 20); do
+      if systemctl is-active --quiet "$unit" 2>/dev/null; then
+        sleep 1
+      else
+        return 0
+      fi
+    done
+    return 1
   fi
 }
 
@@ -463,7 +495,9 @@ cmd_publish_source() {
     svc="$(field   "$line" 4)"
     color="$(color_target "$svc")"
     target_dd="$(dir_for "$dd" "$color")"
+    unit="$(unit_for "$svc" "$color")"
     staging="$(mktemp -d)"
+    target_stop_one "$unit"
     dotnet publish "$csproj" --configuration "$CONFIG" --output "$staging" /p:UseSharedCompilation=false
     target_publish_dir "$staging" "$target_dd"
     rm -rf "$staging"
@@ -480,11 +514,13 @@ cmd_deploy_artifacts() {
     svc="$(field  "$line" 4)"
     color="$(color_target "$svc")"
     target_dd="$(dir_for "$dd" "$color")"
+    unit="$(unit_for "$svc" "$color")"
     src="${ARTIFACT_ROOT}/${name}"
     if [ ! -d "$src" ]; then
       echo "artifact bulunamadi / artifact not found: $src"
       exit 1
     fi
+    target_stop_one "$unit"
     target_publish_dir "$src" "$target_dd"
     echo "yayinlandi (artifact) / published (artifact): $src -> $target_dd"
   done 3< <(services_lines)

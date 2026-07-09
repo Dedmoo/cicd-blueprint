@@ -61,3 +61,24 @@ bash -c '
 
 echo "SIM_SETUP_OK host=$HOST user=$SIM_USER"
 echo "KEYDIR=$KEYDIR"
+
+# Eski mock curl temizligi (onceki remote-sim-test kalintisi).
+if command -v ssh >/dev/null 2>&1 && [ -f "$KEYDIR/deploy_key" ]; then
+  SSH_PRIVATE_KEY="$(cat "$KEYDIR/deploy_key")"
+  export SSH_PRIVATE_KEY SSH_HOST="$HOST" SSH_USER="$SIM_USER" SSH_PORT=22
+  export SSH_KNOWN_HOSTS="$(cat "$KEYDIR/known_hosts")"
+  export DEPLOY_TARGET=remote
+  bash -c '
+    SCRIPT_DIR="'"$REPO"'/templates/scripts"
+    source "$SCRIPT_DIR/ssh-remote.sh"
+    ssh_remote_init
+    remote_sudo "
+      if [ -f /usr/local/bin/curl.real ]; then
+        mv -f /usr/local/bin/curl.real /usr/local/bin/curl
+        chmod +x /usr/local/bin/curl
+      elif [ -f /usr/local/bin/curl ] && head -1 /usr/local/bin/curl | grep -q bash; then
+        rm -f /usr/local/bin/curl
+      fi
+    " 2>/dev/null || true
+  '
+fi

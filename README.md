@@ -606,6 +606,10 @@ dotnet-cicd-template/
 │   ├── own-project-integration.en.md    # full own-project integration (EN)
 │   ├── dotnet-cicd-template.tr.md  # Türkçe playbook
 │   └── dotnet-cicd-template.en.md  # English playbook
+├── tests/
+│   ├── run-wsl.py                  # tam test paketi (statik + state + E2E uzak sim)
+│   ├── e2e-full.sh                 # gercek .NET + SSH + systemd + nginx E2E
+│   └── fixtures/                   # minimal test uygulamasi
 └── templates/
     ├── .github/
     │   ├── actions/build-test/action.yml     # sürüm doğrulama + cache + build/test
