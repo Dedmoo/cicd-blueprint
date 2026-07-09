@@ -410,6 +410,8 @@ In the repo, top menu **Settings**.
 | Name | Value |
 |---|---|
 | `SERVICES` | the line(s) from Step C |
+| `EF_PROJECT` | `.csproj` with migrations (e.g. `src/Infrastructure/Infrastructure.csproj`) |
+| `EF_STARTUP_PROJECT` | (optional) startup `.csproj`; if empty, first `SERVICES` csproj |
 
 **For remote also:**
 
@@ -527,10 +529,9 @@ come up after the first successful deploy.
 
 ## 12. Step H — First CI and first Deploy
 
-### H.0 — Database migrations (DB-backed projects, optional)
+### H.0 — Database migrations (EF Core)
 
-If your project uses a database, migrations should be part of the deploy flow. The template does
-not run them automatically; the hook is provided, you fill it in.
+Migrations are part of the deploy flow; no script edits required.
 
 **Correct order (blue-green):**
 
@@ -542,15 +543,18 @@ not run them automatically; the hook is provided, you fill it in.
 > **Critical:** Non-backward-compatible (breaking) migrations do not fit blue-green directly.
 > Use expand-contract or plan a separate maintenance window.
 
-**Setup:**
+**Setup (Variables/Secrets only):**
 
-1. Open `scripts/ensure-infra.sh`.
-2. Edit `ensure_infra_local()` or `ensure_infra_remote()` with your migration command
-   (e.g. `dotnet ef database update --project ... --startup-project ...`).
-3. GitHub **Variables** → `RUN_ENSURE_INFRA` = `true`.
-4. Run deploy — the migration step runs **before** downloading the artifact.
+1. GitHub **Variables** → `EF_PROJECT` = path to `.csproj` with migrations
+   (e.g. `src/Infrastructure/Infrastructure.csproj`).
+2. (Optional) `EF_STARTUP_PROJECT` = startup `.csproj`. If empty, the first `SERVICES` line csproj
+   is used.
+3. **Secrets** → `APP_ENV` with the connection string (e.g.
+   `ConnectionStrings__DefaultConnection=Server=...`).
+4. Run deploy — `dotnet ef database update` runs on the runner **before** downloading the artifact
+   (no SDK required on the remote host).
 
-If `RUN_ENSURE_INFRA` is unset or not `true`, this step is skipped (default).
+If `EF_PROJECT` is not set, the migration step is skipped.
 
 ### H.1 — CI (automatic)
 
@@ -677,7 +681,7 @@ sudo journalctl -u myapp-web-blue -n 50 --no-pager      # app log
 - [ ] `production` environment: required reviewers + prevent self-review + `main` only
 - [ ] **Continuous Integration** green at least once
 - [ ] **Production Deploy** triggered with a description and approved
-- [ ] (if DB) `ensure-infra.sh` customized, `RUN_ENSURE_INFRA=true`
+- [ ] `EF_PROJECT` set (DB projects), connection string in `APP_ENV`
 
 **remote extra:**
 - [ ] `deploy` user + `authorized_keys` on the server

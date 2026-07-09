@@ -24,7 +24,9 @@ name: Production Deploy
 #   - Variable  SSH_PORT       : SSH portu (varsayilan 22, remote)
 #   - Variable  SSH_KNOWN_HOSTS : (ZORUNLU / REQUIRED) sunucu host key satiri (ssh-keyscan ciktisi)
 #   - Secret    SSH_PRIVATE_KEY : deploy SSH private key (remote, sifresiz)
-#   - Secret    APP_ENV        : (opsiyonel) KEY=VALUE satirlari
+#   - Variable  EF_PROJECT     : migration iceren .csproj (DB projeleri icin zorunlu)
+#   - Variable  EF_STARTUP_PROJECT : startup .csproj (opsiyonel; yoksa SERVICES ilk csproj)
+#   - Secret    APP_ENV        : (opsiyonel) KEY=VALUE satirlari (ConnectionStrings__...)
 
 on:
   workflow_dispatch:
@@ -157,14 +159,17 @@ jobs:
             echo "> The new release is written to the IDLE color. On health pass nginx makes it active via graceful reload."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Opsiyonel: DB migration vb. — once scripts/ensure-infra.sh dosyasini duzenleyin,
-      # sonra Variable RUN_ENSURE_INFRA=true yapin. Siralama: migrate -> idle deploy -> health -> switch.
-      # Optional: DB migrations etc. — customize scripts/ensure-infra.sh first,
-      # then set Variable RUN_ENSURE_INFRA=true. Order: migrate -> idle deploy -> health -> switch.
+      # DB migration (EF Core): EF_PROJECT variable ile otomatik calisir.
+      # Siralama: migrate -> idle deploy -> health -> switch.
+      # EF Core DB migration: runs automatically when EF_PROJECT is set.
+      # Order: migrate -> idle deploy -> health -> switch.
       - name: Altyapi hazir / ensure infra
-        if: vars.RUN_ENSURE_INFRA == 'true'
+        if: vars.EF_PROJECT != '' || vars.RUN_ENSURE_INFRA == 'true'
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          APP_ENV: ${{ secrets.APP_ENV }}
+          EF_PROJECT: ${{ vars.EF_PROJECT }}
+          EF_STARTUP_PROJECT: ${{ vars.EF_STARTUP_PROJECT }}
         run: bash scripts/ensure-infra.sh
 
       - name: Build + test (kaynaktan) / (from source)

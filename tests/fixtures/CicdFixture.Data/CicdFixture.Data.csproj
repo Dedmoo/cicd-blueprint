@@ -1,13 +1,11 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>CicdFixture.Web</RootNamespace>
-    <AssemblyName>CicdFixture.Web</AssemblyName>
+    <RootNamespace>CicdFixture.Data</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\CicdFixture.Data\CicdFixture.Data.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
       <PrivateAssets>all</PrivateAssets>

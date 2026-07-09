@@ -410,6 +410,8 @@ Repoda üstte **Settings**.
 | Name | Value |
 |---|---|
 | `SERVICES` | Adım C'deki satır(lar) |
+| `EF_PROJECT` | Migration içeren `.csproj` (ör. `src/Infrastructure/Infrastructure.csproj`) |
+| `EF_STARTUP_PROJECT` | (opsiyonel) Startup `.csproj`; boşsa `SERVICES` ilk csproj |
 
 **remote için ek:**
 
@@ -527,10 +529,9 @@ başarılı deploy'dan sonra ayağa kalkar.
 
 ## 12. Adım H — İlk CI ve ilk Deploy
 
-### H.0 — Veritabanı migration (DB kullanan projeler, opsiyonel)
+### H.0 — Veritabanı migration (EF Core)
 
-Veritabanı kullanan projelerde migration **deploy akışının parçası olmalıdır**. Şablon bunu
-otomatik yapmaz; hook hazırdır, siz doldurursunuz.
+Migration deploy akışının parçasıdır; script düzenlemeniz gerekmez.
 
 **Doğru sıra (blue-green):**
 
@@ -542,15 +543,18 @@ otomatik yapmaz; hook hazırdır, siz doldurursunuz.
 > **Kritik:** Geriye uyumlu olmayan (breaking) migration'lar blue-green ile doğrudan çalışmaz.
 > Expand-contract deseni kullanın veya ayrı bakım penceresi planlayın.
 
-**Kurulum:**
+**Kurulum (yalnızca Variables/Secrets):**
 
-1. `scripts/ensure-infra.sh` dosyasını açın.
-2. `ensure_infra_local()` veya `ensure_infra_remote()` içine projenize özel migration komutunu yazın
-   (ör. `dotnet ef database update --project ... --startup-project ...`).
-3. GitHub **Variables** → `RUN_ENSURE_INFRA` = `true`.
-4. Deploy çalıştırın — migration adımı artifact indirmeden **önce** koşar.
+1. GitHub **Variables** → `EF_PROJECT` = migration içeren `.csproj` yolu
+   (ör. `src/Infrastructure/Infrastructure.csproj`).
+2. (Opsiyonel) `EF_STARTUP_PROJECT` = startup `.csproj`. Boş bırakırsanız `SERVICES` ilk
+   satırındaki csproj kullanılır.
+3. **Secrets** → `APP_ENV` içinde bağlantı dizesi (ör.
+   `ConnectionStrings__DefaultConnection=Server=...`).
+4. Deploy çalıştırın — `dotnet ef database update` runner üzerinde, artifact indirmeden **önce**
+   koşar (uzak sunucuda SDK gerekmez).
 
-`RUN_ENSURE_INFRA` tanımlı değilse veya `true` değilse bu adım atlanır (varsayılan).
+`EF_PROJECT` tanımlı değilse migration adımı atlanır.
 
 ### H.1 — CI (otomatik)
 
@@ -676,7 +680,7 @@ sudo journalctl -u myapp-web-blue -n 50 --no-pager      # uygulama logu
 - [ ] `production` environment: required reviewers + prevent self-review + yalnızca `main`
 - [ ] En az bir kez **Continuous Integration** yeşil
 - [ ] **Production Deploy** açıklama ile tetiklendi ve onaylandı
-- [ ] (DB varsa) `ensure-infra.sh` düzenlendi, `RUN_ENSURE_INFRA=true`
+- [ ] `EF_PROJECT` tanımlı (DB projeleri), `APP_ENV` içinde bağlantı dizesi
 
 **remote ek:**
 - [ ] Sunucuda `deploy` kullanıcısı + `authorized_keys`

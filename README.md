@@ -315,7 +315,9 @@ note=ana sayfa metni güncellendi
 | Variable | `SSH_USER` | remote için / for remote | SSH kullanıcısı (ör. `deploy`) / SSH user (e.g. `deploy`) |
 | Variable | `SSH_PORT` | Hayır / No | SSH portu (varsayılan `22`) / SSH port (default `22`) |
 | Variable | `SSH_KNOWN_HOSTS` | remote için zorunlu / required for remote | Sunucu host key satırı (`ssh-keyscan` çıktısı). MITM korumasıdır; boş bırakılırsa uzak deploy reddedilir / server host key line. MITM protection; remote deploy is refused if empty |
-| Variable | `RUN_ENSURE_INFRA` | Hayır / No | `true` ise deploy öncesi `scripts/ensure-infra.sh` çalışır (DB migration vb.; önce scripti düzenleyin) / if `true`, runs `scripts/ensure-infra.sh` before deploy (DB migrations etc.; customize the script first) |
+| Variable | `EF_PROJECT` | Evet (DB projeleri) / Yes (DB projects) | Migration içeren `.csproj` yolu (ör. `src/Infrastructure/Infrastructure.csproj`) / path to `.csproj` with migrations |
+| Variable | `EF_STARTUP_PROJECT` | Hayır / No | Startup `.csproj` (boşsa `SERVICES` ilk satırındaki csproj kullanılır) / startup `.csproj` (defaults to first `SERVICES` csproj) |
+| Variable | `RUN_ENSURE_INFRA` | Hayır / No | Geriye uyumluluk: `true` + boş `EF_PROJECT` → hata. `EF_PROJECT` tanımlıysa adım otomatik çalışır / legacy; use `EF_PROJECT` instead |
 | Variable | `ARTIFACT_NAME` | Hayır / No | Artifact adı (varsayılan `app-publish`) |
 | Secret | `SSH_PRIVATE_KEY` | remote için / for remote | Deploy SSH **private key** (şifresiz bağlantı) |
 | Secret | `APP_ENV` | Hayır / No | `KEY=VALUE`: bağlantı dizeleri, API anahtarları |
@@ -620,7 +622,7 @@ dotnet-cicd-template/
     │       └── production-rollback.yml        # previous_folder | specific_commit
     └── scripts/
         ├── pipeline.sh            # local + remote deploy/rollback
-        ├── ensure-infra.sh        # opsiyonel: deploy oncesi DB migration hook
+        ├── ensure-infra.sh        # deploy oncesi EF Core migration (EF_PROJECT variable)
         ├── ssh-remote.sh          # SSH key, rsync, remote commands
         ├── setup-remote-host.sh   # uzak sunucuda systemd kurulumu (SSH)
         ├── verify-health.sh

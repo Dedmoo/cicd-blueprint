@@ -7,8 +7,9 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 KEYDIR="$REPO/tests/.sim-keys"
 SC="$REPO/templates/scripts"
 FIXTURE_WEB="$REPO/tests/fixtures/CicdFixture.Web/CicdFixture.Web.csproj"
+FIXTURE_DATA="$REPO/tests/fixtures/CicdFixture.Data/CicdFixture.Data.csproj"
 FIXTURE_TEST="$REPO/tests/fixtures/CicdFixture.Tests/CicdFixture.Tests.csproj"
-ENSURE_E2E="$REPO/tests/fixtures/ensure-infra-e2e.sh"
+ENSURE_E2E="$SC/ensure-infra.sh"
 VERIFY="$SC/verify-health.sh"
 
 RC=0
@@ -142,10 +143,16 @@ bash "$SC/setup-remote-host.sh" && pass "E02 setup-remote-host" || fail "E02 set
 phase_end
 
 # -------------------------------------------------------------------------
-phase_begin "03" "ensure-infra (migration marker)"
-bash "$ENSURE_E2E" && pass "E03 ensure-infra-e2e" || fail "E03 ensure-infra-e2e"
-remote_ssh "[ -f /var/lib/cicd-e2e-migration.marker ]" \
-  && pass "E03 migration marker uzakta" || fail "E03 migration marker"
+phase_begin "03" "ensure-infra (EF Core migration)"
+E2E_DB="/tmp/cicd-e2e-migrate.db"
+rm -f "$E2E_DB"
+export EF_PROJECT="$FIXTURE_DATA"
+export EF_STARTUP_PROJECT="$FIXTURE_WEB"
+export APP_ENV="ConnectionStrings__DefaultConnection=Data Source=${E2E_DB}"
+bash "$ENSURE_E2E" && pass "E03 ensure-infra migrate" || fail "E03 ensure-infra migrate"
+[ -f "$E2E_DB" ] && pass "E03 sqlite db olustu" || fail "E03 sqlite db yok"
+python3 -c "import sqlite3; c=sqlite3.connect('${E2E_DB}'); r=c.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='Markers'\").fetchone(); assert r, 'Markers missing'" \
+  && pass "E03 Markers tablosu" || fail "E03 Markers tablosu"
 phase_end
 
 # -------------------------------------------------------------------------

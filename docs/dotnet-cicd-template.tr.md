@@ -220,7 +220,7 @@ templates/
 
 - **Tek çalıştırıcı** tek hata noktasıdır; kritik ortamlarda birden çok çalıştırıcı önerilir.
 - **Mavi-yeşil (blue-green) dağıtım** varsayılan olarak entegre edilmiştir; bağlantı düzeyinde sıfır kesinti sağlar. Ancak **instance-içi bellek state** (sepet, oturum, cache) iki renk arasında paylaşılmaz — farklı .NET süreçleri aynı bellek adresini okuyamaz. Kalıcı state için Redis/veritabanı kullanılmalıdır. Sticky session gereken uygulamalar için bu kısıt dikkate alınmalıdır.
-- **Veritabanı geçişleri (migration)** şablonda otomatik değildir; `scripts/ensure-infra.sh` hook'u ve `RUN_ENSURE_INFRA=true` variable'ı ile etkinleştirilir. Sıra: **migrate → idle deploy → health → switch**. Migration'lar geriye uyumlu olmalıdır (aktif renk çalışırken şema güncellenir).
+- **Veritabanı geçişleri (migration)** `EF_PROJECT` variable'ı ile otomatik çalışır (`dotnet ef database update` runner üzerinde). Sıra: **migrate → idle deploy → health → switch**. Migration'lar geriye uyumlu olmalıdır (aktif renk çalışırken şema güncellenir). Bağlantı dizesi `APP_ENV` secret'ında.
 - **Gizli bilgiler** yapılandırma dosyalarında değil, GitHub Secrets / bir secret vault içinde tutulmalıdır.
 
 ## 10. Ek: Somut Örnek (eShopOnWeb)

@@ -220,7 +220,7 @@ templates/
 
 - **A single runner** is a single point of failure; multiple runners are recommended for critical environments.
 - **Blue-green deployment** is integrated by default and provides connection-level zero-downtime. However, **in-process memory state** (cart, session, cache) is not shared between the two colors — different .NET processes cannot read the same memory address. Redis or a database must be used for persistent state. This constraint must be considered for applications with sticky sessions.
-- **Database migrations** are not automatic in the template; enable via `scripts/ensure-infra.sh` and Variable `RUN_ENSURE_INFRA=true`. Order: **migrate → idle deploy → health → switch**. Migrations must be backward-compatible (schema updates while the active color still serves traffic).
+- **Database migrations** run automatically via the `EF_PROJECT` variable (`dotnet ef database update` on the runner). Order: **migrate → idle deploy → health → switch**. Migrations must be backward-compatible (schema updates while the active color still serves traffic). Connection string goes in the `APP_ENV` secret.
 - **Secrets** should be kept in GitHub Secrets / a secret vault rather than in configuration files.
 
 ## 10. Appendix: Concrete Example (eShopOnWeb)
