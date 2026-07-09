@@ -166,9 +166,11 @@ To use this template you **edit no files.** All application-specific values are 
 1. **Copy the template:** Copy `templates/.github` and `templates/scripts` to the root of your own repository.
 2. **Add Variables:** GitHub → Settings → Secrets and variables → Actions → Variables:
    - `SERVICES` (required): the service list, one line each `name|csproj|deploy_dir|service_name|health_url`.
+   - `EF_PROJECT` (required for DB projects): path to `.csproj` with migrations.
+   - `EF_STARTUP_PROJECT` (optional): startup `.csproj`; if empty, first `SERVICES` csproj is used.
    - `RUNNER_LABEL` (optional): runner label (default `self-hosted`).
    - `ARTIFACT_NAME` (optional): artifact name (default `app-publish`).
-3. **Add Secrets (optional):** Put `KEY=VALUE` lines into the `APP_ENV` secret (connection strings, API keys). At deploy it is injected into each service as `.env`; .NET applies them over `appsettings` automatically.
+3. **Add Secrets:** Put `KEY=VALUE` lines into the `APP_ENV` secret (connection strings required for DB projects, API keys optional). Injected as `.env` per service at deploy; also loaded on the runner during migration.
 4. **Create and harden the `production` environment:** Settings → Environments → add `production`; define **required reviewers**, enable **prevent self-review**, and restrict deployments to the **`main`** branch only (you may add an optional **wait timer**). These settings make the approval gate genuinely effective.
 5. **Prepare the host:** Once on the runner machine (with the same `SERVICES` value as step 2):
    ```bash
@@ -206,6 +208,7 @@ templates/
 │       └── production-rollback.yml     # previous_folder | specific_commit
 └── scripts/
     ├── pipeline.sh                # blue-green: publish/deploy/write-env/restart/health/switch/rollback
+    ├── ensure-infra.sh            # pre-deploy EF Core migration (EF_PROJECT)
     ├── ssh-remote.sh              # SSH key/rsync/remote commands (ControlMaster)
     ├── verify-health.sh           # public-URL or Unix socket health check
     ├── setup-remote-host.sh       # runs setup-host.sh on remote server via SSH

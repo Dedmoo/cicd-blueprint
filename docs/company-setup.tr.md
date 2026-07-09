@@ -13,8 +13,8 @@ YML dosyasına dokunmazsınız. Tüm ayarlar GitHub arayüzünden (Variables / S
 
 | Yol | Ne zaman | Bu rehberde |
 |---|---|---|
-| **Yerel (`local`)** | Runner ile uygulama **aynı** makinede | Adım 1 → 2 (local değişkenler) → 3 (`APP_ENV` opsiyonel) → 4 → 5 Yerel → 6 |
-| **Uzak (`remote`)** | Uygulama ayrı bir Linux sunucuda; runner GitHub `ubuntu-latest` | Adım 1 → **Sunucu hazırlığı (zorunlu)** → 2 (remote değişkenler) → 3 (SSH secret) → 4 → 5 Uzak → 6 |
+| **Yerel (`local`)** | Runner ile uygulama **aynı** makinede | Adım 1 → 2 (local değişkenler) → 3 (`APP_ENV` + `EF_PROJECT`) → 4 → 5 Yerel → 6 |
+| **Uzak (`remote`)** | Uygulama ayrı bir Linux sunucuda; runner GitHub `ubuntu-latest` | Adım 1 → **Sunucu hazırlığı (zorunlu)** → 2 (remote değişkenler) → 3 (SSH secret + `APP_ENV`) → 4 → 5 Uzak → 6 |
 
 Aşağıdaki **uzak** kritik maddelerin hepsi bu dosyada açıkça yazılıdır:
 
@@ -46,6 +46,7 @@ repo-kökü/
 │       └── production-rollback.yml
 ├── scripts/
 │   ├── pipeline.sh
+│   ├── ensure-infra.sh          # deploy oncesi EF Core migration (EF_PROJECT)
 │   ├── ssh-remote.sh
 │   ├── verify-health.sh
 │   ├── setup-host.sh
@@ -132,6 +133,8 @@ ssh-keyscan -p 22 <SUNUCU-IP-VEYA-HOSTNAME>
 | Değişken | Örnek | Açıklama |
 |---|---|---|
 | `SERVICES` | aşağıya bakın | Her satır: `name\|csproj\|deploy_dir\|service_name\|health_url` |
+| `EF_PROJECT` | `src/Infrastructure/Infrastructure.csproj` | Migration içeren `.csproj` (EF Core DB projeleri için **zorunlu**) |
+| `EF_STARTUP_PROJECT` | `src/Web/Web.csproj` | (Opsiyonel) Startup `.csproj`; boşsa `SERVICES` ilk satırındaki csproj kullanılır |
 
 `SERVICES` örneği (tek servis):
 
@@ -183,7 +186,7 @@ api|src/Api/Api.csproj|/opt/myapp-api|myapp-api|http://127.0.0.1:5002
 | Secret | Ne zaman | Ne yapıştırılır |
 |---|---|---|
 | `SSH_PRIVATE_KEY` | **remote zorunlu** | `deploy_key` dosyasının **tümü**: `-----BEGIN OPENSSH PRIVATE KEY-----` … `-----END OPENSSH PRIVATE KEY-----`. Şifresiz (`-N ""`) ed25519. Eksik satır = `invalid format`. |
-| `APP_ENV` | Opsiyonel (local + remote) | `KEY=VALUE` satırları (`.env`). Deploy'da her servise `.env` olarak yazılır. |
+| `APP_ENV` | **DB projeleri için zorunlu** | `KEY=VALUE` satırları. Deploy'da her servise `.env` olarak yazılır; migration sırasında da runner ortamına yüklenir. Örnek: `ConnectionStrings__DefaultConnection=Server=...` |
 
 Private key'i asla Variables'a koymayın; yalnızca Secrets.
 
@@ -239,7 +242,10 @@ bash scripts/setup-remote-host.sh
 1. `main`'e push → Actions'ta **Continuous Integration** yeşil olsun.
 2. Actions → **Production Deploy** → **Run workflow** → zorunlu açıklama yazın → kaynak `ci_artifact` kalsın → Run.
 3. Reviewer `prepare` özetini okuyup onaylasın → deploy koşar.
-4. Health fail olursa nginx geçişi **yapılmaz**; canlı etkilenmez; job kırmızıya çeker. Sorunu giderin, yeniden deploy tetikleyin.
+4. Onaydan sonra sıra: **EF migration** (`EF_PROJECT` tanımlıysa) → idle renge yayın → restart → health → nginx switch.
+5. Health fail olursa nginx geçişi **yapılmaz**; canlı etkilenmez; job kırmızıya çeker. Sorunu giderin, yeniden deploy tetikleyin.
+
+> **Migration notu:** `dotnet ef database update` runner üzerinde çalışır; uzak sunucuda SDK gerekmez. Runner'ın veritabanına erişebildiğinden emin olun (firewall / güvenlik grubu). Migration'lar geriye uyumlu olmalıdır (aktif renk çalışırken şema güncellenir).
 
 İlk kurulumda henüz CI artifact yoksa bir kez `build_from_source` kullanabilirsiniz; sonraki normale `ci_artifact` dönün.
 
@@ -253,7 +259,7 @@ bash scripts/setup-remote-host.sh
 - `reusable-dotnet-build.yml`
 - `production-deploy.yml`
 - `production-rollback.yml`
-- `pipeline.sh`, `ssh-remote.sh`, `verify-health.sh`
+- `pipeline.sh`, `ssh-remote.sh`, `verify-health.sh`, `ensure-infra.sh`
 
 ---
 
@@ -262,6 +268,8 @@ bash scripts/setup-remote-host.sh
 ### Ortak
 - [ ] Template → yeni repo; `templates/` kökte
 - [ ] `SERVICES` doğru formatta
+- [ ] `EF_PROJECT` tanımlı (DB projeleri)
+- [ ] Secret `APP_ENV` içinde bağlantı dizesi (DB projeleri)
 - [ ] `production` environment: required reviewers + prevent self-review + `main` only
 - [ ] `nginx` sunucuda kurulu (`setup-host.sh` kurar veya önceden kurulmuş)
 - [ ] Continuous Integration en az bir kez yeşil

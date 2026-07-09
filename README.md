@@ -172,12 +172,13 @@ flowchart TB
 | # | Adım / Step | Ne yapar / What it does |
 |---|---|---|
 | 1 | Kaynak hazırlığı / source prep | `ci_artifact` → artifact indir + commit köken doğrulaması / download artifact + commit provenance check · `build_from_source` → derle+test / build+test |
-| 2 | **publish (IDLE renk)** | Yeni sürümü **boş (idle) rengin** dizinine yazar; aktif renk dokunulmaz / Writes new version to the **idle color** dir; active color not touched |
-| 3 | **write-env + write-info** | Gizli ortam ve künye idle renk dizinine yazılır / Secret env and deploy info written to idle color dir |
-| 4 | **restart (IDLE)** | Yalnızca idle rengin systemd birimi başlatılır / Only the idle color systemd unit is restarted |
-| 5 | **health (socket)** | Idle rengin Unix socketi üzerinden sağlık doğrulanır / Health verified via idle color Unix socket |
-| 6 | sağlıklıysa / on pass | **nginx switch**: upstream dosyası yeniden yazılır + graceful reload → sıfır kesintili geçiş / upstream rewritten + graceful reload → zero-downtime switch |
-| 7 | başarısızsa / on fail | Geçiş YAPILMAZ; canlı etkilenmez; job başarısız işaretlenir / Switch NOT made; live unaffected; job marked failed |
+| 2 | **ensure-infra (migration)** | `EF_PROJECT` tanımlıysa `dotnet ef database update` runner üzerinde / if `EF_PROJECT` is set, runs `dotnet ef database update` on the runner |
+| 3 | **publish (IDLE renk)** | Yeni sürümü **boş (idle) rengin** dizinine yazar; aktif renk dokunulmaz / Writes new version to the **idle color** dir; active color not touched |
+| 4 | **write-env + write-info** | Gizli ortam ve künye idle renk dizinine yazılır / Secret env and deploy info written to idle color dir |
+| 5 | **restart (IDLE)** | Yalnızca idle rengin systemd birimi başlatılır / Only the idle color systemd unit is restarted |
+| 6 | **health (socket)** | Idle rengin Unix socketi üzerinden sağlık doğrulanır / Health verified via idle color Unix socket |
+| 7 | sağlıklıysa / on pass | **nginx switch**: upstream dosyası yeniden yazılır + graceful reload → sıfır kesintili geçiş / upstream rewritten + graceful reload → zero-downtime switch |
+| 8 | başarısızsa / on fail | Geçiş YAPILMAZ; canlı etkilenmez; job başarısız işaretlenir / Switch NOT made; live unaffected; job marked failed |
 
 **TR:** Tüm bu ağır iş, tek bir `pipeline.sh` scriptinin alt komutlarıyla yapılır: `publish-source`, `deploy-artifacts`, `write-env`, `write-info`, `restart`, `health`, `health-active`, `switch`, `rollback`. Hepsi `SERVICES`'i okuyup tüm servisler üzerinde döner.
 
@@ -489,8 +490,10 @@ ssh-keyscan -p 22 10.0.0.5
 | **Settings → Variables** → `SSH_HOST`, `SSH_USER` | Uzak sunucu IP ve kullanıcı / remote IP and user | remote için | 1 kez |
 | **Settings → Secrets** → `SSH_PRIVATE_KEY` | Deploy SSH private key | remote için | 1 kez |
 | **Settings → Variables** → `SERVICES` | Proje yolu, deploy dizini, **health_url = sunucu IP** | Evet / Yes | Proje başına |
+| **Settings → Variables** → `EF_PROJECT` | Migration içeren `.csproj` yolu | DB projeleri / DB projects | Proje başına |
+| Aynı yer → `EF_STARTUP_PROJECT` | Startup `.csproj` (opsiyonel) | Hayır / No | Gerekirse |
 | Aynı yer → `RUNNER_LABEL` | `ubuntu-latest` (remote) veya `self-hosted` (local) | Hayır / No | Gerekirse |
-| **Settings → Secrets** → `APP_ENV` | DB / API gizli ayarlar | Hayır / No | Gerekirse |
+| **Settings → Secrets** → `APP_ENV` | DB bağlantı dizesi + API gizli ayarları | DB projeleri / DB projects | Gerekirse |
 | **Settings → Environments** → `production` | Onaylayan kişi + sertleştirme (self-review engelle, yalnızca `main`) / reviewer + hardening (prevent self-review, `main` only) | Evet / Yes | 1 kez |
 | Uzak sunucu (remote) | `bash scripts/setup-remote-host.sh` (SSH ile systemd) | remote için | 1 kez |
 | Yerel host (local) | `sudo bash scripts/setup-host.sh` | local için | 1 kez |
@@ -502,8 +505,8 @@ ssh-keyscan -p 22 10.0.0.5
 1. **Use this template** → yeni repo
 2. `templates/` içeriğini repo köküne taşı
 3. Deploy SSH key oluştur → public key sunucuya, private key → Secret `SSH_PRIVATE_KEY`
-4. Variables: `DEPLOY_TARGET=remote`, `SSH_HOST`, `SSH_USER`, `SERVICES` (health_url = sunucu IP)
-5. `RUNNER_LABEL=ubuntu-latest`, `production` + reviewer
+4. Variables: `DEPLOY_TARGET=remote`, `SSH_HOST`, `SSH_USER`, `SERVICES` (health_url = sunucu IP), `EF_PROJECT`
+5. Secret `APP_ENV` (DB bağlantı dizesi) + `RUNNER_LABEL=ubuntu-latest`, `production` + reviewer
 6. `bash scripts/setup-remote-host.sh` (bir kez)
 7. Push → CI → Deploy + onay
 
@@ -512,8 +515,8 @@ ssh-keyscan -p 22 10.0.0.5
 1. **Use this template** → new repo
 2. Move `templates/` to repo root
 3. Create deploy SSH key → public on server, private in `SSH_PRIVATE_KEY`
-4. Variables: `DEPLOY_TARGET=remote`, `SSH_HOST`, `SSH_USER`, `SERVICES` (health_url = server IP)
-5. `RUNNER_LABEL=ubuntu-latest`, `production` + reviewer
+4. Variables: `DEPLOY_TARGET=remote`, `SSH_HOST`, `SSH_USER`, `SERVICES` (health_url = server IP), `EF_PROJECT`
+5. Secret `APP_ENV` (DB connection string) + `RUNNER_LABEL=ubuntu-latest`, `production` + reviewer
 6. `bash scripts/setup-remote-host.sh` (once)
 7. Push → CI → Deploy + approve
 
@@ -521,8 +524,8 @@ ssh-keyscan -p 22 10.0.0.5
 
 1. [github.com/Dedmoo/dotnet-cicd-template](https://github.com/Dedmoo/dotnet-cicd-template) → **Use this template** → yeni repo oluştur
 2. `templates/.github` ve `templates/scripts` klasörlerini repo **köküne** taşı
-3. Variables: `DEPLOY_TARGET=local` (veya boş), `SERVICES`, `RUNNER_LABEL=self-hosted`
-4. (Opsiyonel) Secret `APP_ENV`
+3. Variables: `DEPLOY_TARGET=local` (veya boş), `SERVICES`, `EF_PROJECT`, `RUNNER_LABEL=self-hosted`
+4. Secret `APP_ENV` (DB bağlantı dizesi)
 5. **Settings → Environments** → `production` + **required reviewers**
 6. Runner makinesinde: `sudo SERVICES="..." bash scripts/setup-host.sh`
 7. `main`'e push → CI → Deploy
@@ -531,8 +534,8 @@ ssh-keyscan -p 22 10.0.0.5
 
 1. **Use this template** → new repo
 2. Move `templates/.github` and `templates/scripts` to repo root
-3. Variables: `DEPLOY_TARGET=local` (or empty), `SERVICES`, `RUNNER_LABEL=self-hosted`
-4. (Optional) Secret `APP_ENV`
+3. Variables: `DEPLOY_TARGET=local` (or empty), `SERVICES`, `EF_PROJECT`, `RUNNER_LABEL=self-hosted`
+4. Secret `APP_ENV` (DB connection string)
 5. **Settings → Environments** → `production` + **required reviewers**
 6. On runner machine: `sudo SERVICES="..." bash scripts/setup-host.sh`
 7. Push to `main` → CI → Deploy
@@ -551,13 +554,13 @@ ssh-keyscan -p 22 10.0.0.5
 1. Geliştirici `main`'e push eder → CI otomatik derler, test eder, artifact üretir.
 2. Actions → **Deploy** → açıklama girilir, kaynak seçilir.
 3. `production` onayı verilir.
-4. Yeni sürüm **idle renge** yayınlanır → idle yeniden başlatılır → socket sağlık geçer → nginx graceful reload → **sıfır kesintili geçiş**.
+4. `EF_PROJECT` tanımlıysa veritabanı migration'ı çalışır → yeni sürüm **idle renge** yayınlanır → idle yeniden başlatılır → socket sağlık geçer → nginx graceful reload → **sıfır kesintili geçiş**.
 
 **EN — How does a change go live?**
 1. Developer pushes to `main` → CI auto builds, tests, produces an artifact.
 2. Actions → **Deploy** → enter a description, pick a source.
 3. `production` approval is granted.
-4. New version published to **idle color** → idle restarted → socket health passes → nginx graceful reload → **zero-downtime switch**.
+4. If `EF_PROJECT` is set, database migration runs → new version published to **idle color** → idle restarted → socket health passes → nginx graceful reload → **zero-downtime switch**.
 
 **TR — Hatalı bir deploy olursa ne olur?**
 1. Idle renkin socket sağlık kontrolü başarısız olur.
@@ -579,8 +582,8 @@ ssh-keyscan -p 22 10.0.0.5
 **EN:** No file editing. Just copy and fill in values from the UI:
 
 1. **TR:** `templates/.github` ve `templates/scripts` klasörlerini kendi deponuzun köküne kopyalayın. / **EN:** Copy `templates/.github` and `templates/scripts` to your repository root.
-2. **TR:** GitHub → Settings → Secrets and variables → Actions → **Variables**: `SERVICES` (ve gerekiyorsa `RUNNER_LABEL`) ekleyin. / **EN:** Add the `SERVICES` variable (and `RUNNER_LABEL` if needed).
-3. **TR:** (Opsiyonel) **Secrets** → `APP_ENV`: bağlantı dizeleri / API anahtarları. / **EN:** (Optional) Secret `APP_ENV`: connection strings / API keys.
+2. **TR:** GitHub → Settings → Secrets and variables → Actions → **Variables**: `SERVICES`, `EF_PROJECT` (ve gerekiyorsa `RUNNER_LABEL`) ekleyin. / **EN:** Add the `SERVICES` and `EF_PROJECT` variables (and `RUNNER_LABEL` if needed).
+3. **TR:** **Secrets** → `APP_ENV`: bağlantı dizeleri (DB projeleri için zorunlu) / API anahtarları. / **EN:** Secret `APP_ENV`: connection strings (required for DB projects) / API keys.
 4. **TR:** GitHub → Settings → Environments → `production` ekleyip **required reviewers** tanımlayın; **prevent self-review** ve **yalnızca `main`** dalını açın (onay kapısı sertleştirmesi). / **EN:** Add a `production` environment with **required reviewers**; enable **prevent self-review** and **`main`-only** branch (approval gate hardening).
 5. **TR:** Host'ta bir kez (systemd birimlerini kurar) / **EN:** Once on the host (creates systemd units):
    ```bash

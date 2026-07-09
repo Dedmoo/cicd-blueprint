@@ -166,9 +166,11 @@ Bu şablonu kullanmak için **hiçbir dosyayı düzenlemezsiniz.** Uygulamaya ö
 1. **Şablonu kopyalayın:** `templates/.github` ve `templates/scripts` klasörlerini kendi deponuzun köküne kopyalayın.
 2. **Değişkenleri girin (Variables):** GitHub → Settings → Secrets and variables → Actions → Variables:
    - `SERVICES` (zorunlu): servis listesi, her satır `name|csproj|deploy_dir|service_name|health_url`.
+   - `EF_PROJECT` (DB projeleri için zorunlu): migration içeren `.csproj` yolu.
+   - `EF_STARTUP_PROJECT` (opsiyonel): startup `.csproj`; boşsa `SERVICES` ilk csproj kullanılır.
    - `RUNNER_LABEL` (opsiyonel): çalıştırıcı etiketi (varsayılan `self-hosted`).
    - `ARTIFACT_NAME` (opsiyonel): artifact adı (varsayılan `app-publish`).
-3. **Gizli bilgileri girin (Secrets, opsiyonel):** `APP_ENV` secret'ine `KEY=VALUE` satırları koyun (bağlantı dizeleri, API anahtarları). Deploy'da her servise `.env` olarak enjekte edilir; .NET bunları `appsettings` üzerine otomatik uygular.
+3. **Gizli bilgileri girin (Secrets):** `APP_ENV` secret'ine `KEY=VALUE` satırları koyun (bağlantı dizeleri zorunlu, API anahtarları opsiyonel). Deploy'da her servise `.env` olarak enjekte edilir; migration sırasında runner ortamına da yüklenir.
 4. **`production` ortamını oluşturun ve sertleştirin:** Settings → Environments → `production` ekleyin; **required reviewers** tanımlayın, **prevent self-review**'i açın ve dağıtımı **yalnızca `main`** dalına kısıtlayın (opsiyonel bir **wait timer** ekleyebilirsiniz). Bu ayarlar onay kapısını gerçekten etkili kılar.
 5. **Host'u hazırlayın:** Çalıştırıcı makinesinde bir kez (adım 2'deki `SERVICES` değerinin aynısıyla):
    ```bash
@@ -206,6 +208,7 @@ templates/
 │       └── production-rollback.yml     # previous_folder | specific_commit
 └── scripts/
     ├── pipeline.sh                # blue-green: publish/deploy/write-env/restart/health/switch/rollback
+    ├── ensure-infra.sh            # pre-deploy EF Core migration (EF_PROJECT)
     ├── ssh-remote.sh              # SSH key/rsync/remote commands (ControlMaster)
     ├── verify-health.sh           # public-URL veya Unix socket sağlık kontrolü
     ├── setup-remote-host.sh       # uzak sunucuda setup-host.sh çalıştırır (SSH)

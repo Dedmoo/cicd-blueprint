@@ -21,7 +21,8 @@ In short:
 1. When code is pushed to GitHub it is **built and tested automatically**.
 2. An authorized person **approves** going live.
 3. After approval the new version is **written to the idle channel** on the server; once health passes, nginx **silently** routes traffic to it — users notice nothing; their next request gets the updated version. This is called “blue-green” deployment.
-4. If the new version fails the health check, the switch is **never made** — live users keep seeing the previous version without any interruption.
+4. For database-backed projects, **EF Core migration** runs automatically before deploy (`EF_PROJECT` variable).
+5. If the new version fails the health check, the switch is **never made** — live users keep seeing the previous version without any interruption.
 
 Your job: fill in the settings once. After that: write code → get approval → live updates.
 
@@ -194,6 +195,8 @@ Add these **one by one**:
 | `RUNNER_LABEL` | `ubuntu-latest` |
 | `SSH_KNOWN_HOSTS` | Full `ssh-keyscan` output from Section 2.5 |
 | `SERVICES` | Adapt the one-liner below to your paths |
+| `EF_PROJECT` | Project with migrations, e.g. `src/Infrastructure/Infrastructure.csproj` |
+| `EF_STARTUP_PROJECT` | (Optional) startup project; if empty, first `SERVICES` csproj is used |
 
 Example `SERVICES` (one app):
 
@@ -221,11 +224,13 @@ Path: **Settings → Secrets and variables → Actions → Secrets** → **New r
 |---|---|
 | `SSH_PRIVATE_KEY` | The **entire** text of `deploy_key` from Section 0 (`BEGIN` … `END` included) |
 
-Optional:
+For database-backed projects (required):
 
 | Name | Value |
 |---|---|
-| `APP_ENV` | App env lines, e.g. `ConnectionStrings__Default=...` |
+| `APP_ENV` | Connection string, e.g. `ConnectionStrings__DefaultConnection=Server=DB_IP,1433;User Id=...;Password=...;TrustServerCertificate=true` |
+
+You can add other secret settings (API keys, etc.) as additional lines in the same secret.
 
 ### 3.3 Production approval box
 
@@ -285,6 +290,8 @@ Then:
 2. The reviewer checks Summary / the approval screen → **Approve**.  
 3. Deploy finishes → on failure the nginx switch was not made; live was unaffected. Fix and retrigger.
 
+During deploy (after approval): database migration runs first, then the new version is published to the idle color.
+
 Success: your app answers at the `health_url`.
 
 ---
@@ -299,6 +306,7 @@ Success: your app answers at the `health_url`.
 | `invalid format` / libcrypto | Incomplete key pasted into the Secret |
 | Health fail but SSH works | nginx not installed or `setup-remote-host.sh` not run |
 | Artifact not found | CI must be green first — or use `build_from_source` once |
+| Migration error | Is `EF_PROJECT` path correct? Is connection string in `APP_ENV`? Can the runner reach the DB? |
 
 Longer table: [`README.md`](../README.md) troubleshooting section.
 
@@ -309,8 +317,8 @@ Longer table: [`README.md`](../README.md) troubleshooting section.
 - [ ] `deploy_key` / `.pub` created  
 - [ ] Server has `deploy` + authorized_keys  
 - [ ] Saw `sudo OK`  
-- [ ] GitHub Variables set  
-- [ ] Secret `SSH_PRIVATE_KEY` set  
+- [ ] GitHub Variables set (`DEPLOY_TARGET`, `SSH_*`, `RUNNER_LABEL`, `SERVICES`, `SSH_KNOWN_HOSTS`, `EF_PROJECT`)
+- [ ] Secrets: `SSH_PRIVATE_KEY` + `APP_ENV` (DB connection string)
 - [ ] Environment `production` + reviewer  
 - [ ] `setup-remote-host.sh` ran (nginx + systemd units created)  
 - [ ] Continuous Integration green  

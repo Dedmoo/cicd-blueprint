@@ -13,8 +13,8 @@ Turkish version: [`company-setup.tr.md`](./company-setup.tr.md)
 
 | Path | When | Follow |
 |---|---|---|
-| **Local** | Runner and app on the **same** machine | Steps 1 → 2 (local vars) → 3 (optional `APP_ENV`) → 4 → 5 Local → 6 |
-| **Remote** | App on a separate Linux server; runner is GitHub `ubuntu-latest` | Steps 1 → **Server prep (required)** → 2 (remote vars) → 3 (SSH secret) → 4 → 5 Remote → 6 |
+| **Local** | Runner and app on the **same** machine | Steps 1 → 2 (local vars) → 3 (`APP_ENV` + `EF_PROJECT`) → 4 → 5 Local → 6 |
+| **Remote** | App on a separate Linux server; runner is GitHub `ubuntu-latest` | Steps 1 → **Server prep (required)** → 2 (remote vars) → 3 (SSH secret + `APP_ENV`) → 4 → 5 Remote → 6 |
 
 Everything below for **remote** is written explicitly in this file:
 
@@ -46,6 +46,7 @@ repo-root/
 │       └── production-rollback.yml
 ├── scripts/
 │   ├── pipeline.sh
+│   ├── ensure-infra.sh          # pre-deploy EF Core migration (EF_PROJECT)
 │   ├── ssh-remote.sh
 │   ├── verify-health.sh
 │   ├── setup-host.sh
@@ -132,6 +133,8 @@ Copy the **entire** output; paste it as a GitHub Variable in Step 2.
 | Variable | Example | Description |
 |---|---|---|
 | `SERVICES` | see below | One line each: `name\|csproj\|deploy_dir\|service_name\|health_url` |
+| `EF_PROJECT` | `src/Infrastructure/Infrastructure.csproj` | `.csproj` with migrations (**required** for EF Core DB projects) |
+| `EF_STARTUP_PROJECT` | `src/Web/Web.csproj` | (Optional) startup `.csproj`; if empty, first `SERVICES` csproj is used |
 
 Single-service example:
 
@@ -183,7 +186,7 @@ Example: `http://203.0.113.10:5001/health` → nginx port `5001`; health path `/
 | Secret | When | What to paste |
 |---|---|---|
 | `SSH_PRIVATE_KEY` | **required for remote** | The **entire** `deploy_key` file: `-----BEGIN OPENSSH PRIVATE KEY-----` … `-----END OPENSSH PRIVATE KEY-----`. Passphrase-free (`-N ""`) ed25519. Missing lines = `invalid format`. |
-| `APP_ENV` | Optional (local + remote) | `KEY=VALUE` lines (`.env`). Written to each service as `.env` at deploy. |
+| `APP_ENV` | **required for DB projects** | `KEY=VALUE` lines. Written to each service as `.env` at deploy; also loaded on the runner during migration. Example: `ConnectionStrings__DefaultConnection=Server=...` |
 
 Never put the private key in Variables — Secrets only.
 
@@ -239,7 +242,10 @@ bash scripts/setup-remote-host.sh
 1. Push to `main` → **Continuous Integration** is green in Actions.
 2. Actions → **Production Deploy** → **Run workflow** → enter a required description → leave source `ci_artifact` → Run.
 3. Reviewer reads the `prepare` summary and approves → deploy runs.
-4. If health fails, the nginx switch is **not made**; live traffic is unaffected; the job is marked failed. Fix the issue and trigger a new deploy.
+4. After approval the order is: **EF migration** (when `EF_PROJECT` is set) → publish to idle → restart → health → nginx switch.
+5. If health fails, the nginx switch is **not made**; live traffic is unaffected; the job is marked failed. Fix the issue and trigger a new deploy.
+
+> **Migration note:** `dotnet ef database update` runs on the runner; no SDK on the remote host. Ensure the runner can reach the database (firewall / security group). Migrations must be backward-compatible (schema updates while the active color still serves traffic).
 
 If there is no CI artifact yet (very first setup), use `build_from_source` once; then return to `ci_artifact`.
 
@@ -253,7 +259,7 @@ Do not edit these — project values are not written into YML lines:
 - `reusable-dotnet-build.yml`
 - `production-deploy.yml`
 - `production-rollback.yml`
-- `pipeline.sh`, `ssh-remote.sh`, `verify-health.sh`
+- `pipeline.sh`, `ssh-remote.sh`, `verify-health.sh`, `ensure-infra.sh`
 
 ---
 
@@ -262,6 +268,8 @@ Do not edit these — project values are not written into YML lines:
 ### Shared
 - [ ] Template → new repo; `templates/` at root
 - [ ] `SERVICES` correctly formatted
+- [ ] `EF_PROJECT` set (DB projects)
+- [ ] Secret `APP_ENV` with connection string (DB projects)
 - [ ] `production` environment: required reviewers + prevent self-review + `main` only
 - [ ] `nginx` installed on server (`setup-host.sh` installs it or pre-installed)
 - [ ] Continuous Integration green at least once

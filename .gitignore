@@ -8,3 +8,7 @@ Thumbs.db
 
 # Yerel test anahtarlari (remote sim)
 tests/.sim-keys/
+
+# Yerel test artefaktlari
+tests/fixtures/**/bin/
+tests/fixtures/**/obj/
