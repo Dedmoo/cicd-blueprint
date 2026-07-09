@@ -30,6 +30,7 @@ WORK="$(mktemp -d)"
 init_svc(){
   local svc="$1" dd="$2" col="$3"
   mkdir -p "${dd}-blue" "${dd}-green"
+  touch "${dd}-blue/c.dll" "${dd}-green/c.dll"
   printf 'upstream cicd_%s { server unix:/run/cicd/%s-%s.sock; }\n' "$svc" "$svc" "$col" > "${CICD}/${svc}-upstream.conf"
   printf '%s\n' "$col" > "${CICD}/${svc}.active"
 }
@@ -49,6 +50,7 @@ SERVICES="web|c|${WORK}/web|web|http://127.0.0.1:5001/health" bash "$SC/pipeline
 init_svc web "${WORK}/web" blue
 NGINX_T_FAIL=1 SERVICES="web|c|${WORK}/web|web|http://127.0.0.1:5001/health" bash "$SC/pipeline.sh" switch >/dev/null 2>&1
 [ "$(active web)" = "blue" ] && pass "T4 reload-fail state korundu" || fail "T4 ($(active web))"
+grep -q 'web-blue' "${CICD}/web-upstream.conf" && pass "T4b reload-fail upstream geri alindi" || fail "T4b upstream"
 
 init_svc blue-web "${WORK}/blueapp" green
 SERVICES="blue-web|c|${WORK}/blueapp|blue-web|http://127.0.0.1:5002/health" bash "$SC/pipeline.sh" switch >/dev/null 2>&1
@@ -63,6 +65,11 @@ SERVICES="$SVC_MULTI" bash "$SC/pipeline.sh" rollback >/dev/null 2>&1 || rbrc=$?
 rbrc=${rbrc:-0}
 [ "$rbrc" -ne 0 ] && pass "T6a rollback iptal" || fail "T6a"
 { [ "$(active a)" = "green" ] && [ "$(active b)" = "green" ]; } && pass "T6b state degismedi" || fail "T6b"
+
+mkdir -p "${WORK}/b-blue"
+SERVICES="$SVC_MULTI" bash "$SC/pipeline.sh" rollback >/dev/null 2>&1 || rbrc2=$?
+rbrc2=${rbrc2:-0}
+[ "$rbrc2" -ne 0 ] && pass "T6c bos dizin (DLL yok) rollback iptal" || fail "T6c bos dizin rollback olmamali"
 
 init_svc a "${WORK}/a" green
 init_svc b "${WORK}/b" green

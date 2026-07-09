@@ -265,9 +265,9 @@ sequenceDiagram
 | `previous_folder` | nginx upstream eski renge yeniden yazılır + graceful reload; **derleme yok, dosya kopyası yok**, sıfır kesinti (eski renk zaten çalışıyor) / nginx upstream rewritten to old color + graceful reload; **no rebuild, no file copy**, zero-downtime (old color already running) | Son dağıtım hatalı, hızlı dönüş gerek / Last deploy faulty, need fast return |
 | `specific_commit` | Verilen commit idle renge derlenir, sağlık geçince nginx geçişi yapılır / Given commit built to idle color, nginx switched on health pass | Daha eski, belirli bir noktaya dönüş / Return to a specific older point |
 
-**TR:** Her iki modda da sonunda socket üzerinden sağlık kontrolü koşulur. Rollback da `production` onayına tabidir.
+**TR:** Her iki modda da sonunda socket üzerinden sağlık kontrolü koşulur. `previous_folder` modunda trafik **switch öncesi** hedef renk doğrulanır: dizin mevcut olmalı, publish DLL içermeli ve socket sağlıklı olmalı; nginx reload veya state yazımı başarısız olursa upstream otomatik eski renge döner. Rollback da `production` onayına tabidir.
 
-**EN:** Both modes end with a socket-based health check. Rollback is also subject to `production` approval.
+**EN:** Both modes end with a socket-based health check. In `previous_folder` mode, the target color is validated **before** the switch: directory must exist, contain the published DLL, and pass socket health; if nginx reload or state write fails, upstream is automatically reverted. Rollback is also subject to `production` approval.
 
 ---
 

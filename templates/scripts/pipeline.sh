@@ -190,6 +190,30 @@ target_dir_exists() {
   fi
 }
 
+# Dosya var mi (rollback DLL dogrulamasi icin) / whether a file exists (rollback DLL validation)
+target_file_exists() {
+  local path="$1"
+  if is_remote; then
+    remote_ssh "[ -f '$path' ]"
+  else
+    [ -f "$path" ]
+  fi
+}
+
+# health_url'den yalnizca path / extract path from health_url only
+health_path_from_url() {
+  local url="$1"
+  printf '%s' "$url" | sed -E 's#https?://[^/]+(/.+)$#\1#;t;s#.*#/health#'
+}
+
+# csproj yolundan publish DLL adi (setup-host.sh ile ayni) / publish DLL name from csproj path
+dll_for_csproj() {
+  local csproj="$1"
+  local base
+  base="$(basename "$csproj" .csproj)"
+  printf '%s.dll' "$base"
+}
+
 target_publish_dir() {
   local staging="$1"
   local dest="$2"
@@ -359,6 +383,74 @@ nginx_reload() {
   echo "nginx graceful reload tamam / done"
 }
 
+# Kaydedilmis aktif renklere upstream geri yukle + reload (hata kurtarma).
+# Revert upstream includes to saved active colors + reload (failure recovery).
+revert_upstreams_saved() {
+  local revert_file="$1"
+  while IFS='|' read -r svc active || [ -n "${svc:-}" ]; do
+    [ -z "${svc:-}" ] && continue
+    nginx_write_upstream "$svc" "$active"
+    echo "upstream geri alindi / reverted: ${svc} -> ${active}"
+  done < "$revert_file"
+  nginx_reload || echo "UYARI / WARNING: geri alma reload basarisiz / revert reload failed" >&2
+}
+
+# Hedef (idle veya rollback) renge trafik gecisi: upstream -> reload -> state.
+# Gecis basarisiz olursa upstream diskini kaydedilen aktif renge geri alir (canli nginx korunur).
+# Switch traffic to target (idle or rollback) color: upstream -> reload -> state.
+# On failure, reverts on-disk upstream to the saved active color (live nginx preserved).
+switch_traffic_to_idle() {
+  local revert_file state_fail=0
+  revert_file="$(mktemp)"
+
+  while IFS= read -r line <&3; do
+    local svc active
+    svc="$(field "$line" 4)"
+    active="$(color_active "$svc")"
+    printf '%s|%s\n' "$svc" "$active" >> "$revert_file"
+  done 3< <(services_lines)
+
+  while IFS= read -r line <&3; do
+    local svc color
+    svc="$(field "$line" 4)"
+    color="$(color_target "$svc")"
+    nginx_write_upstream "$svc" "$color"
+    echo "upstream guncellendi / updated: ${svc} -> ${color}"
+  done 3< <(services_lines)
+
+  if ! nginx_reload; then
+    echo "HATA: nginx reload basarisiz; upstream ve canli trafik onceki renkte tutuluyor." >&2
+    echo "ERROR: nginx reload failed; upstream and live traffic kept on previous color." >&2
+    revert_upstreams_saved "$revert_file"
+    rm -f "$revert_file"
+    return 1
+  fi
+
+  set +e
+  while IFS= read -r line <&3; do
+    local svc color wrc
+    svc="$(field "$line" 4)"
+    color="$(color_target "$svc")"
+    write_active_color "$svc" "$color"
+    wrc=$?
+    if [ "$wrc" -ne 0 ]; then
+      state_fail=1
+    fi
+  done 3< <(services_lines)
+  set -e
+
+  if [ "$state_fail" -ne 0 ]; then
+    echo "HATA: aktif renk state yazilamadi; upstream geri aliniyor." >&2
+    echo "ERROR: failed to persist active-color state; reverting upstream." >&2
+    revert_upstreams_saved "$revert_file"
+    rm -f "$revert_file"
+    return 1
+  fi
+
+  rm -f "$revert_file"
+  return 0
+}
+
 # -------------------------------------------------------------------------
 # Pipeline komutlari / Pipeline commands
 # -------------------------------------------------------------------------
@@ -456,8 +548,7 @@ cmd_health() {
     url="$(field "$line" 5)"
     color="$(color_target "$svc")"
     sock="$(sock_for "$svc" "$color")"
-    # health_path: URL'den sadece path'i cikart / extract only the path from URL
-    health_path="$(printf '%s' "$url" | sed -E 's#https?://[^/]+(/.+)$#\1#;t;s#.*#/health#')"
+    health_path="$(health_path_from_url "$url")"
     echo "saglik kontrolu / health check: $sock ($health_path)"
     if ! target_health_socket_one "$sock" "$health_path"; then
       fail=1
@@ -467,31 +558,7 @@ cmd_health() {
 }
 
 cmd_switch() {
-  # 1. Tum servislerin upstream include dosyalarini idle renge guncelle (state'e DOKUNMA).
-  # 1. Update all upstream include files to the idle color (do NOT touch state yet).
-  while IFS= read -r line <&3; do
-    local svc color
-    svc="$(field "$line" 4)"
-    color="$(color_target "$svc")"
-    nginx_write_upstream "$svc" "$color"
-    echo "upstream guncellendi / updated: ${svc} -> ${color}"
-  done 3< <(services_lines)
-
-  # 2. Tek seferde nginx graceful reload / single graceful nginx reload.
-  #    Basarisizsa set -e ile cikilir; state guncellenmedigi icin bir sonraki
-  #    deploy hala dogru aktif rengi okur (canli nginx ile tutarli kalir).
-  #    On failure set -e exits; since state is untouched, the next deploy still
-  #    reads the correct active color (stays consistent with the live nginx).
-  nginx_reload
-
-  # 3. Reload BASARILI: aktif renk durumunu yeni renge yaz (kesin kaynak guncellenir).
-  # 3. Reload SUCCEEDED: persist the new active color (update the source of truth).
-  while IFS= read -r line <&3; do
-    local svc color
-    svc="$(field "$line" 4)"
-    color="$(color_target "$svc")"
-    write_active_color "$svc" "$color"
-  done 3< <(services_lines)
+  switch_traffic_to_idle || return 1
   echo "trafik gecisi tamam / traffic switched"
 }
 
@@ -505,7 +572,7 @@ cmd_health_active() {
     url="$(field "$line" 5)"
     color="$(color_active "$svc")"
     sock="$(sock_for "$svc" "$color")"
-    health_path="$(printf '%s' "$url" | sed -E 's#https?://[^/]+(/.+)$#\1#;t;s#.*#/health#')"
+    health_path="$(health_path_from_url "$url")"
     echo "saglik kontrolu (aktif renk) / health check (active color): $sock ($health_path)"
     if ! target_health_socket_one "$sock" "$health_path"; then
       fail=1
@@ -515,32 +582,34 @@ cmd_health_active() {
 }
 
 cmd_rollback() {
-  # Blue-green rollback: nginx'i diger renge (onceki surum) cevir + graceful reload.
-  # Blue-green rollback: switch nginx to the other color (previous version) + graceful reload.
+  # Blue-green rollback: hedef renge gecmeden once dogrula + saglik kontrolu, sonra gecis.
+  # Blue-green rollback: validate + health-check before switching, then switch traffic.
   # Sifir kesinti: aktif renk kapanmaz; nginx yalnizca yonlendirmeyi degistirir.
-  # Zero-downtime: the active color never goes down; nginx only changes routing.
   #
-  # Rollback rengi = aktif rengin tersi = color_target. Islem 3 fazlidir ve
-  # yarim-state olusmasini onler:
-  #   1) DOGRULA: tum servislerin rollback dizini var mi (hicbir sey yazma).
-  #   2) YAZ: tumu gecerliyse upstream include'lari rollback rengine yaz.
-  #   3) RELOAD sonrasi: state dosyalarini guncelle (kesin kaynak).
-  # Rollback color = opposite of active = color_target. Three phases prevent a
-  # half-applied state: 1) VALIDATE all rollback dirs exist (no writes),
-  # 2) WRITE upstreams only if all valid, 3) update state files AFTER reload.
+  # Fazlar / Phases:
+  #   1) DOGRULA: rollback dizini + publish DLL mevcut mu (yazma yok).
+  #   2) SAGLIK: hedef renk socket'i saglikli mi (switch oncesi).
+  #   3) GECIS: switch_traffic_to_idle (upstream -> reload -> state; hata olursa geri al).
   local fail=0
 
-  # 1. DOGRULAMA fazi — hicbir dosya yazilmaz.
-  # 1. VALIDATION phase — no files are written.
+  # 1. DOGRULAMA — dizin + DLL (bos klasor ile rollback engellenir).
   while IFS= read -r line <&3; do
-    local dd svc rollback_color rollback_dir
+    local csproj dd svc dll rollback_color rollback_dir
+    csproj="$(field "$line" 2)"
     dd="$(field  "$line" 3)"
     svc="$(field "$line" 4)"
+    dll="$(dll_for_csproj "$csproj")"
     rollback_color="$(color_target "$svc")"
     rollback_dir="$(dir_for "$dd" "$rollback_color")"
     if ! target_dir_exists "$rollback_dir"; then
       echo "HATA / ERROR: Rollback hedefi bulunamadi (ilk deploy'dan once geri alinamaz)."
       echo "  No rollback target: ${rollback_dir} (cannot roll back before the first deploy)"
+      fail=1
+      continue
+    fi
+    if ! target_file_exists "${rollback_dir}/${dll}"; then
+      echo "HATA / ERROR: Rollback hedefinde uygulama dosyasi yok / no application in rollback target."
+      echo "  Missing: ${rollback_dir}/${dll}"
       fail=1
     fi
   done 3< <(services_lines)
@@ -550,29 +619,29 @@ cmd_rollback() {
     return 1
   fi
 
-  # 2. YAZMA fazi — tum upstream include'lar rollback rengine.
-  # 2. WRITE phase — all upstream includes to the rollback color.
+  # 2. SAGLIK — switch oncesi hedef renk (onceki surum) socket kontrolu.
   while IFS= read -r line <&3; do
-    local svc rollback_color
+    local svc url rollback_color sock health_path
     svc="$(field "$line" 4)"
+    url="$(field "$line" 5)"
     rollback_color="$(color_target "$svc")"
-    nginx_write_upstream "$svc" "$rollback_color"
-    echo "rollback upstream guncellendi / rollback upstream updated: ${svc} -> ${rollback_color}"
+    sock="$(sock_for "$svc" "$rollback_color")"
+    health_path="$(health_path_from_url "$url")"
+    echo "rollback on saglik kontrolu / pre-rollback health: $sock ($health_path)"
+    if ! target_health_socket_one "$sock" "$health_path"; then
+      echo "HATA / ERROR: Rollback hedefi sagliksiz; trafik degistirilmeyecek."
+      echo "  Rollback target unhealthy; traffic will NOT be switched."
+      fail=1
+    fi
   done 3< <(services_lines)
 
-  # 3. Reload; basarisizsa set -e ile cikilir, state guncellenmez.
-  # 3. Reload; on failure set -e exits and state is left untouched.
-  nginx_reload
+  if [ "$fail" -ne 0 ]; then
+    echo "Rollback iptal — hicbir degisiklik yapilmadi. / Rollback aborted — no changes were made."
+    return 1
+  fi
 
-  # 4. Reload BASARILI: aktif renk durumunu rollback rengine yaz.
-  # 4. Reload SUCCEEDED: persist the rollback color as the active state.
-  while IFS= read -r line <&3; do
-    local svc rollback_color
-    svc="$(field "$line" 4)"
-    rollback_color="$(color_target "$svc")"
-    write_active_color "$svc" "$rollback_color"
-  done 3< <(services_lines)
-
+  # 3. GECIS — upstream + reload + state (hata olursa otomatik geri alma).
+  switch_traffic_to_idle || return 1
   echo "rollback tamamlandi / rollback complete — trafik anlık cevirildi / traffic switched instantly"
 }
 

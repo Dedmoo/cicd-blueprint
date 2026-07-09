@@ -584,6 +584,11 @@ The video only shows this loop.
 `previous_folder` is the fastest: the old color is already up, so traffic returns instantly.
 Rollback is also subject to `production` approval.
 
+Before switching, rollback **automatically validates** (inside the pipeline):
+- Target color directory exists **and** contains the published DLL (empty folders are rejected)
+- Target color socket passes health check (unhealthy release never receives traffic)
+- If nginx reload or state write fails, upstream is automatically reverted to the previous color
+
 > **Important:** `previous_folder` works only when the **other color was previously deployed successfully**.
 > Right after the very first deploy (only one color filled), the rollback target is missing and the
 > operation aborts without changes — this is expected. After a second deploy both colors are

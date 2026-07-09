@@ -583,6 +583,11 @@ Video yalnızca bu akışı gösterir.
 `previous_folder` en hızlısıdır: eski renk zaten ayakta olduğu için trafik anında geri döner.
 Rollback da `production` onayına tabidir.
 
+Rollback **switch öncesi** şunları doğrular (pipeline içinde otomatik):
+- Hedef renk dizini mevcut **ve** içinde publish DLL dosyası var (boş klasörle rollback yapılmaz)
+- Hedef renk socket'i health check'ten geçiyor (sağlıksız sürüme trafik verilmez)
+- nginx reload veya state yazımı başarısız olursa upstream otomatik eski renge geri alınır
+
 > **Önemli:** `previous_folder` yalnızca **diğer renkte daha önce başarılı bir deploy yapılmışsa** çalışır.
 > İlk deploy'dan hemen sonra (yalnızca bir renk doluysa) rollback hedefi bulunamaz ve işlem
 > hiçbir değişiklik yapmadan iptal olur — bu beklenen davranıştır. İkinci deploy'dan sonra
