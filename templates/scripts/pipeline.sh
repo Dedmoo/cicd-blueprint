@@ -43,9 +43,15 @@ DEPLOY_TARGET="${DEPLOY_TARGET:-local}"
 source "${SCRIPT_DIR}/ssh-remote.sh"
 ssh_remote_init
 
+require_services() {
+  if [ -z "${SERVICES// /}" ]; then
+    echo "HATA / ERROR: SERVICES ortam degiskeni tanimli degil / SERVICES env not set"
+    exit 1
+  fi
+}
+
 services_lines() {
-  printf '%s\n' "${SERVICES:?SERVICES ortam degiskeni tanimli degil / SERVICES env not set}" \
-    | grep -vE '^\s*(#.*)?$'
+  printf '%s\n' "$SERVICES" | grep -vE '^\s*(#.*)?$'
 }
 
 # NOT: Asagidaki servis donguleri 'read <&3' + '3< <(services_lines)' kullanir.
@@ -97,6 +103,7 @@ validate_name_field() {
 # SERVICES satirlarindaki tum alanlari baslamadan once dogrula.
 # Validates all SERVICES fields before any command runs.
 validate_services() {
+  require_services
   while IFS= read -r line <&3; do
     local name dd svc
     name="$(field "$line" 1)"

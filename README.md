@@ -612,7 +612,9 @@ dotnet-cicd-template/
 │   ├── dotnet-cicd-template.tr.md  # Türkçe playbook
 │   └── dotnet-cicd-template.en.md  # English playbook
 ├── tests/
-│   ├── run-wsl.py                  # tam test paketi (statik + state + E2E uzak sim)
+│   ├── run-wsl.py                  # tam test paketi (audit + statik + contract + state + E2E)
+│   ├── comprehensive-audit.py      # 80+ kontrol: dosya, workflow, dokuman, migration, guvenlik
+│   ├── contract-test.sh            # pipeline write-env/info, validation, rollback fazlari
 │   ├── e2e-full.sh                 # gercek .NET + SSH + systemd + nginx E2E
 │   └── fixtures/                   # minimal test uygulamasi
 └── templates/
