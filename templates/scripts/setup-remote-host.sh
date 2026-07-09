@@ -7,8 +7,8 @@
 # Creates systemd units on the remote server (runs setup-host.sh over SSH).
 #
 # Gerekli / Required:
-#   SERVICES, SSH_HOST, SSH_USER, SSH_PRIVATE_KEY
-# Opsiyonel / Optional: SSH_PORT, SSH_KNOWN_HOSTS
+#   SERVICES, SSH_HOST, SSH_USER, SSH_PRIVATE_KEY, SSH_KNOWN_HOSTS
+# Opsiyonel / Optional: SSH_PORT
 #
 # Kullanim / Usage:
 #   DEPLOY_TARGET=remote SSH_HOST=10.0.0.5 SSH_USER=deploy \

@@ -168,11 +168,11 @@ Example: `http://203.0.113.10:5001/health` → nginx port `5001`; health path `/
 | `SSH_HOST` | **Yes** | Server IP or hostname |
 | `SSH_USER` | **Yes** | `deploy` (the user from U1) |
 | `SSH_PORT` | No | Default `22` |
-| `SSH_KNOWN_HOSTS` | **Strongly recommended** | Full U4 `ssh-keyscan` output |
+| `SSH_KNOWN_HOSTS` | **Required (remote)** | Full U4 `ssh-keyscan` output |
 | `RUNNER_LABEL` | **Yes (recommended)** | `ubuntu-latest` |
 | `ARTIFACT_NAME` | No | Default `app-publish` — if you change it, CI and deploy stay in sync |
 
-Empty `SSH_KNOWN_HOSTS` can still work (the pipeline scans once); filling it avoids connection resets on modern SSH servers (`PerSourcePenalties`).
+`SSH_KNOWN_HOSTS` is **required** for remote deploy: if it is empty the pipeline refuses to run (MITM protection — the old `ssh-keyscan` auto-accept fallback was removed). Providing it also avoids connection resets on modern SSH servers (`PerSourcePenalties`).
 
 ---
 

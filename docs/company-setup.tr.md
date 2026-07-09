@@ -168,11 +168,11 @@ api|src/Api/Api.csproj|/opt/myapp-api|myapp-api|http://127.0.0.1:5002
 | `SSH_HOST` | **Evet** | Sunucu IP veya hostname |
 | `SSH_USER` | **Evet** | `deploy` (U1'deki kullanıcı) |
 | `SSH_PORT` | Hayır | Varsayılan `22` |
-| `SSH_KNOWN_HOSTS` | **Güçlü öneri** | U4'teki `ssh-keyscan` çıktısının tamamı |
+| `SSH_KNOWN_HOSTS` | **Zorunlu (remote)** | U4'teki `ssh-keyscan` çıktısının tamamı |
 | `RUNNER_LABEL` | **Evet (önerilen)** | `ubuntu-latest` |
 | `ARTIFACT_NAME` | Hayır | Varsayılan `app-publish` — değiştirirseniz CI ile aynı kalır |
 
-Boş `SSH_KNOWN_HOSTS` ile de çalışabilir (pipeline bir kez tarar); yine de doldurmanız modern SSH sunucularında (`PerSourcePenalties`) bağlantı sıfırlanmalarını önler.
+`SSH_KNOWN_HOSTS` uzak deploy için **zorunludur**: boş bırakılırsa pipeline çalışmayı reddeder (MITM koruması — eski `ssh-keyscan` otomatik-kabul fallback'i kaldırıldı). Doldurmak ayrıca modern SSH sunucularında (`PerSourcePenalties`) bağlantı sıfırlanmalarını önler.
 
 ---
 

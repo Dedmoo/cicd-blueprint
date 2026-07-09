@@ -22,7 +22,7 @@ name: Production Deploy
 #   - Variable  SSH_HOST       : uzak sunucu IP/hostname (remote)
 #   - Variable  SSH_USER       : SSH kullanicisi (remote)
 #   - Variable  SSH_PORT       : SSH portu (varsayilan 22, remote)
-#   - Variable  SSH_KNOWN_HOSTS : (onerilir / recommended) sunucu host key satiri
+#   - Variable  SSH_KNOWN_HOSTS : (ZORUNLU / REQUIRED) sunucu host key satiri (ssh-keyscan ciktisi)
 #   - Secret    SSH_PRIVATE_KEY : deploy SSH private key (remote, sifresiz)
 #   - Secret    APP_ENV        : (opsiyonel) KEY=VALUE satirlari
 
@@ -77,7 +77,7 @@ jobs:
       commit_hash: ${{ steps.info.outputs.commit_hash }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Deploy on bilgisi / pre-deploy info
         id: info
@@ -107,7 +107,7 @@ jobs:
     environment: production    # onay kapisi bu ortama baglanir / approval gate binds to this environment
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Yapilandirmayi dogrula / validate configuration
         env:

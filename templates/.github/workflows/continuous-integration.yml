@@ -24,6 +24,15 @@ permissions:
 
 jobs:
   build-test:
+    # Guvenlik: fork'tan gelen PR'lar kalici self-hosted runner'da CALISTIRILMAZ.
+    # Guvenilmeyen kod (secrets'a ve production agina yakin) runner'da kosmamali.
+    # Ayni repodan gelen PR'lar ve main'e push'lar normal calisir.
+    # Security: PRs from forks are NOT run on the persistent self-hosted runner.
+    # Untrusted code must not execute near secrets/production. Same-repo PRs and
+    # pushes to main run as usual.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/reusable-dotnet-build.yml
     with:
       configuration: Release

@@ -67,7 +67,7 @@
 |---|---|
 | **Otomatik CI** | `main`'e her push ve PR'de otomatik derleme + test / Auto build + test on every push/PR to `main` |
 | **Yapı çıktısı (artifact)** | Testten geçen çıktı saklanır, deploy'da yeniden kullanılır / Tested output is stored and reused at deploy |
-| **Build-once, deploy-many** | Test edilen ile canlıya çıkan birebir aynı / What is tested equals what ships |
+| **Build-once, deploy-many** | Artifact bir kez üretilir; canlıya çıkan, testten geçen commit'in aynısından gelir (köken/commit garantisi) / Built once; what ships comes from the same verified commit that was tested (commit-level provenance) |
 | **Onaya bağlı deploy** | Üretim için manuel onay kapısı (`production` environment) / Manual approval gate for production |
 | **Sıfır kesinti (blue-green)** | nginx + Unix socket: yeni sürüm idle renge yazılır; sağlık geçince nginx trafiği çevirir — kullanıcı fark etmez / nginx + Unix socket: new version written to idle color; nginx switches on health pass — users notice nothing |
 | **Sağlık kontrolü (socket)** | Geçiş öncesi idle rengin Unix socketi doğrulanır; başarısızsa nginx çevrilmez, canlı etkilenmez / Idle color Unix socket verified before switch; on failure nginx not switched, live unaffected |
@@ -138,9 +138,9 @@ flowchart TB
 
 ## 2. Yapı Çıktısı ve Build-Once/Deploy-Many / Artifacts
 
-**TR:** `main`'e push olduğunda, her servis yayımlanır (`dotnet publish`) ve hepsi **tek birleşik artifact** (`app-publish`) olarak 30 gün saklanır. Bu, boru hattının en önemli ilkelerinden birini mümkün kılar: **build-once, deploy-many.** Yani test edilen yapı ile canlıya çıkan yapı **birebir aynıdır**; deploy anında yeniden derlemeye gerek kalmadan bu doğrulanmış çıktı kullanılabilir (`ci_artifact` kaynağı).
+**TR:** `main`'e push olduğunda, her servis yayımlanır (`dotnet publish`) ve hepsi **tek birleşik artifact** (`app-publish`) olarak 30 gün saklanır. Bu, boru hattının en önemli ilkelerinden birini mümkün kılar: **build-once, deploy-many.** Artifact bir kez üretilir ve deploy anında yeniden derlenmeden birçok kez kullanılabilir (`ci_artifact` kaynağı). Garanti **köken/commit düzeyindedir**: deploy edilen artifact, testten geçen commit ile birebir aynı commit'ten üretilir (bkz. aşağıdaki köken doğrulama). Not: CI'de test `dotnet build` çıktısına karşı çalışır, artifact ise ayrı bir `dotnet publish` ile üretilir; dolayısıyla garanti *bayt düzeyinde ikili eşitlik* değil, aynı doğrulanmış commit'tir.
 
-**EN:** On push to `main`, each service is published (`dotnet publish`) and stored for 30 days as a **single combined artifact** (`app-publish`). This enables one of the pipeline's key principles: **build-once, deploy-many.** The tested build and the shipped build are **byte-for-byte identical**; at deploy time this validated output can be used without rebuilding (the `ci_artifact` source).
+**EN:** On push to `main`, each service is published (`dotnet publish`) and stored for 30 days as a **single combined artifact** (`app-publish`). This enables one of the pipeline's key principles: **build-once, deploy-many.** The artifact is built once and can be deployed many times without rebuilding (the `ci_artifact` source). The guarantee is **commit-level provenance**: the deployed artifact is produced from the exact same commit that passed tests (see provenance below). Note: in CI the tests run against the `dotnet build` output while the artifact is produced by a separate `dotnet publish`, so the guarantee is the same verified commit — not *byte-for-byte binary equality*.
 
 **TR — Köken doğrulama (provenance):** `ci_artifact` ile deploy edilirken, artifact'ı üreten CI çalışmasının commit'i (`headSha`) ile o an deploy edilen commit (`github.sha`) karşılaştırılır. Eşleşmezse deploy **durur**. Böylece "test edilen commit ile canlıya çıkan commit farklı" durumu engellenir; bu, `ci_artifact`'ı varsayılan ve güvenli kaynak yapan garantidir.
 
@@ -306,7 +306,7 @@ note=ana sayfa metni güncellendi
 | Variable | `SSH_HOST` | remote için / for remote | Uzak sunucu IP veya hostname / remote server IP or hostname |
 | Variable | `SSH_USER` | remote için / for remote | SSH kullanıcısı (ör. `deploy`) / SSH user (e.g. `deploy`) |
 | Variable | `SSH_PORT` | Hayır / No | SSH portu (varsayılan `22`) / SSH port (default `22`) |
-| Variable | `SSH_KNOWN_HOSTS` | Önerilir / Recommended | Sunucu host key satırı (`ssh-keyscan` çıktısı); doldurmak bağlantı sıfırlanmalarını önler / server host key line; setting it avoids connection resets |
+| Variable | `SSH_KNOWN_HOSTS` | remote için zorunlu / required for remote | Sunucu host key satırı (`ssh-keyscan` çıktısı). MITM korumasıdır; boş bırakılırsa uzak deploy reddedilir / server host key line. MITM protection; remote deploy is refused if empty |
 | Variable | `ARTIFACT_NAME` | Hayır / No | Artifact adı (varsayılan `app-publish`) |
 | Secret | `SSH_PRIVATE_KEY` | remote için / for remote | Deploy SSH **private key** (şifresiz bağlantı) |
 | Secret | `APP_ENV` | Hayır / No | `KEY=VALUE`: bağlantı dizeleri, API anahtarları |
@@ -446,9 +446,9 @@ deploy ALL=(ALL) NOPASSWD: ALL
 | `rsync: command not found` | rsync runner'da **veya** sunucuda kurulu değil. | İki tarafta da kurun: `sudo apt-get install -y rsync`. |
 | İlk deploy'da `App.dll bulunamadı` | `setup-remote-host.sh` çalıştı ama henüz deploy yapılmadı (`/opt/...` boş). | Önce bir Deploy tetikleyin; systemd servisi ilk yayından sonra ayağa kalkar. |
 
-**TR — `SSH_KNOWN_HOSTS` nasıl alınır (tavsiye edilir):**
+**TR — `SSH_KNOWN_HOSTS` nasıl alınır (remote için zorunlu):**
 
-**EN — How to get `SSH_KNOWN_HOSTS` (recommended):**
+**EN — How to get `SSH_KNOWN_HOSTS` (required for remote):**
 
 ```bash
 ssh-keyscan -p 22 10.0.0.5

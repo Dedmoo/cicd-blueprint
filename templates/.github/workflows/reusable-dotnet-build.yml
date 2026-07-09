@@ -38,7 +38,7 @@ jobs:
     runs-on: ${{ vars.RUNNER_LABEL || 'self-hosted' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Build + test
         uses: ./.github/actions/build-test
@@ -61,7 +61,7 @@ jobs:
 
       - name: Artifact yukle / upload artifact
         if: inputs.upload_artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ env.PUBLISH_ROOT }}

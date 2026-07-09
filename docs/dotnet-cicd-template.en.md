@@ -150,7 +150,7 @@ A health check runs at the end of both modes.
 
 | Principle | How it is applied | Benefit |
 |---|---|---|
-| Build-once, deploy-many | `ci_artifact` source (default) | Tested equals released, byte-for-byte |
+| Build-once, deploy-many | `ci_artifact` source (default) | Released comes from the same verified commit that was tested (commit-level provenance, not byte-for-byte) |
 | Provenance | `ci_artifact` commit == deploy commit | The tested commit equals the released commit |
 | Approval gate | `environment: production` + reviewer/self-review/`main` | Prevents unauthorized production deploys |
 | Least privilege | `permissions: contents: read` (+ `actions: read` on deploy) | Narrows the token's scope |

@@ -27,8 +27,8 @@
 #   as an instant rollback target.
 #
 # Uzak deploy icin ek / For remote deploy also:
-#   SSH_HOST, SSH_USER, SSH_PRIVATE_KEY (secret)
-#   SSH_PORT (opsiyonel / optional), SSH_KNOWN_HOSTS (opsiyonel / optional)
+#   SSH_HOST, SSH_USER, SSH_PRIVATE_KEY (secret), SSH_KNOWN_HOSTS (zorunlu / required)
+#   SSH_PORT (opsiyonel / optional)
 #
 # Kullanim / Usage:
 #   bash pipeline.sh <deploy-artifacts|publish-source|write-env|write-info|restart|health|switch|rollback>
@@ -112,20 +112,53 @@ validate_services() {
 # Blue-green renk yardimcilari / Blue-green color helpers
 # -------------------------------------------------------------------------
 
-# Aktif rengi nginx upstream include'indan okur.
-# Reads the active color from the nginx upstream include file.
+# Aktif renk durum dosyasi — kesin kaynak (source of truth).
+# nginx upstream metnini grep'lemek yerine ayri, tek-degerli bir durum dosyasi
+# kullaniriz. Boylece (a) servis adinda "blue"/"green" gecmesi yaniltmaz,
+# (b) nginx reload basarisiz olursa state guncellenmez (yaz-sonra-reload yerine
+# reload-sonra-yaz), diskteki state ile calisan nginx tutarli kalir.
+# Active-color state file — the source of truth. Instead of grepping the nginx
+# upstream text we keep a separate single-value state file. This means (a) a
+# service name containing "blue"/"green" cannot mislead detection, and (b) if the
+# nginx reload fails the state is not updated (we write AFTER a successful reload,
+# not before), so the on-disk state stays consistent with the running nginx.
+state_file_for() { printf '/etc/nginx/cicd/%s.active' "$1"; }
+
+# Aktif rengi durum dosyasindan okur.
+# Reads the active color from the state file.
 color_active() {
   local svc="$1"
-  local include_file="/etc/nginx/cicd/${svc}-upstream.conf"
+  local sf; sf="$(state_file_for "$svc")"
   local c=""
   if is_remote; then
-    c="$(remote_ssh "grep -oE 'blue|green' '$include_file' 2>/dev/null | head -1" 2>/dev/null)" || c=""
+    c="$(remote_ssh "cat '$sf' 2>/dev/null" 2>/dev/null)" || c=""
   else
-    c="$(grep -oE 'blue|green' "$include_file" 2>/dev/null | head -1)" || c=""
+    c="$(cat "$sf" 2>/dev/null)" || c=""
   fi
-  # Dosya yoksa (ilk deploy oncesi) blue varsayilan; target green olur.
-  # If file absent (pre-first-deploy) default to blue so target becomes green.
-  printf '%s' "${c:-blue}"
+  # Yalnizca gecerli deger kabul; degilse blue varsay (ilk deploy oncesi).
+  # Accept only valid values; otherwise assume blue (pre-first-deploy).
+  case "$c" in
+    blue|green) printf '%s' "$c" ;;
+    *)          printf 'blue' ;;
+  esac
+}
+
+# Aktif renk durumunu yazar. YALNIZCA basarili nginx reload'dan SONRA cagrilmali.
+# Writes the active-color state. Must be called ONLY AFTER a successful nginx reload.
+write_active_color() {
+  local svc="$1" color="$2"
+  local sf; sf="$(state_file_for "$svc")"
+  if is_remote; then
+    local tmp
+    tmp="$(remote_ssh "mktemp /tmp/cicd-state-XXXXXX")"
+    remote_write_file "$color" "$tmp" 644
+    remote_sudo "mv '$tmp' '$sf' && chmod 644 '$sf'"
+  else
+    local tmp; tmp="$(mktemp)"
+    printf '%s\n' "$color" > "$tmp"
+    mv "$tmp" "$sf"
+    chmod 644 "$sf"
+  fi
 }
 
 # Hedef renk: aktif rengin tersi.
@@ -140,6 +173,9 @@ color_target() {
 dir_for()  { printf '%s-%s' "$1" "$2"; }                     # (deploy_dir, color) -> deploy_dir-color
 unit_for() { printf '%s-%s' "$1" "$2"; }                     # (svc, color) -> svc-color
 sock_for() { printf '/run/cicd/%s-%s.sock' "$1" "$2"; }      # (svc, color) -> socket path
+# Servis hesabi adi: setup-host.sh ile ayni konvansiyon (dusuk yetkili, login yok).
+# Service account name: same convention as setup-host.sh (low-privilege, no login).
+svc_user_for() { printf 'cicd-%s' "$1"; }                    # (svc) -> cicd-svc
 
 # -------------------------------------------------------------------------
 # SSH yardimcilari / SSH target helpers
@@ -175,6 +211,11 @@ target_publish_dir() {
 target_write_env_one() {
   local dest_dir="$1"
   local content="$2"
+  local svc_user="$3"
+  # .env, servisi calistiran dusuk yetkili kullanici (svc_user) tarafindan
+  # okunabilmelidir (EnvironmentFile). Sahip svc_user, grup cicd, mod 0640.
+  # The .env must be readable by the low-privilege service account (svc_user)
+  # that runs the unit (EnvironmentFile). Owner svc_user, group cicd, mode 0640.
   if is_remote; then
     remote_sudo "mkdir -p '$dest_dir'"
     # mktemp ile rassal gecici yol; PID-tabanli /tmp/cicd-env-$$ yerine kullanilir (TMP-01).
@@ -182,11 +223,16 @@ target_write_env_one() {
     local tmp
     tmp="$(remote_ssh "mktemp /tmp/cicd-env-XXXXXX")"
     remote_write_file "$content" "$tmp" 600
-    remote_sudo "mv '$tmp' '${dest_dir}/.env' && chmod 600 '${dest_dir}/.env' && chown '${SSH_USER}:${SSH_USER}' '${dest_dir}/.env'"
+    remote_sudo "mv '$tmp' '${dest_dir}/.env' && chmod 640 '${dest_dir}/.env' && chown '${svc_user}:cicd' '${dest_dir}/.env'"
   else
     [ -d "$dest_dir" ] || return 0
-    printf '%s\n' "$content" > "${dest_dir}/.env"
-    chmod 600 "${dest_dir}/.env"
+    local tmp; tmp="$(mktemp)"
+    printf '%s\n' "$content" > "$tmp"
+    mv "$tmp" "${dest_dir}/.env"
+    chmod 640 "${dest_dir}/.env"
+    # Local modda runner genelde root'tur; degilse chown best-effort.
+    # In local mode the runner is usually root; otherwise chown is best-effort.
+    chown "${svc_user}:cicd" "${dest_dir}/.env" 2>/dev/null || true
   fi
 }
 
@@ -280,7 +326,12 @@ nginx_write_upstream() {
     remote_write_file "$content" "$tmp" 644
     remote_sudo "mv '$tmp' '$include_file' && chmod 644 '$include_file'"
   else
-    printf '%s\n' "$content" > "$include_file"
+    # Atomik yazim: gecici dosyaya yaz, sonra rename. Yarim yazilmis include olmaz.
+    # Atomic write: write to a temp file, then rename. No half-written include.
+    local tmp; tmp="$(mktemp)"
+    printf '%s\n' "$content" > "$tmp"
+    mv "$tmp" "$include_file"
+    chmod 644 "$include_file"
   fi
 }
 
@@ -339,12 +390,13 @@ cmd_write_env() {
     return 0
   fi
   while IFS= read -r line <&3; do
-    local dd svc color target_dd
+    local dd svc color target_dd svc_user
     dd="$(field  "$line" 3)"
     svc="$(field "$line" 4)"
     color="$(color_target "$svc")"
     target_dd="$(dir_for "$dd" "$color")"
-    target_write_env_one "$target_dd" "$APP_ENV"
+    svc_user="$(svc_user_for "$svc")"
+    target_write_env_one "$target_dd" "$APP_ENV" "$svc_user"
     echo "gizli ortam yazildi / secret env written: ${target_dd}/.env"
   done 3< <(services_lines)
 }
@@ -401,8 +453,8 @@ cmd_health() {
 }
 
 cmd_switch() {
-  # 1. Tum servislerin upstream include dosyalarini idle renge guncelle.
-  # 1. Update all upstream include files to the idle color.
+  # 1. Tum servislerin upstream include dosyalarini idle renge guncelle (state'e DOKUNMA).
+  # 1. Update all upstream include files to the idle color (do NOT touch state yet).
   while IFS= read -r line <&3; do
     local svc color
     svc="$(field "$line" 4)"
@@ -411,8 +463,21 @@ cmd_switch() {
     echo "upstream guncellendi / updated: ${svc} -> ${color}"
   done 3< <(services_lines)
 
-  # 2. Tek seferde nginx graceful reload / single graceful nginx reload
+  # 2. Tek seferde nginx graceful reload / single graceful nginx reload.
+  #    Basarisizsa set -e ile cikilir; state guncellenmedigi icin bir sonraki
+  #    deploy hala dogru aktif rengi okur (canli nginx ile tutarli kalir).
+  #    On failure set -e exits; since state is untouched, the next deploy still
+  #    reads the correct active color (stays consistent with the live nginx).
   nginx_reload
+
+  # 3. Reload BASARILI: aktif renk durumunu yeni renge yaz (kesin kaynak guncellenir).
+  # 3. Reload SUCCEEDED: persist the new active color (update the source of truth).
+  while IFS= read -r line <&3; do
+    local svc color
+    svc="$(field "$line" 4)"
+    color="$(color_target "$svc")"
+    write_active_color "$svc" "$color"
+  done 3< <(services_lines)
   echo "trafik gecisi tamam / traffic switched"
 }
 
@@ -440,35 +505,60 @@ cmd_rollback() {
   # Blue-green rollback: switch nginx to the other color (previous version) + graceful reload.
   # Sifir kesinti: aktif renk kapanmaz; nginx yalnizca yonlendirmeyi degistirir.
   # Zero-downtime: the active color never goes down; nginx only changes routing.
+  #
+  # Rollback rengi = aktif rengin tersi = color_target. Islem 3 fazlidir ve
+  # yarim-state olusmasini onler:
+  #   1) DOGRULA: tum servislerin rollback dizini var mi (hicbir sey yazma).
+  #   2) YAZ: tumu gecerliyse upstream include'lari rollback rengine yaz.
+  #   3) RELOAD sonrasi: state dosyalarini guncelle (kesin kaynak).
+  # Rollback color = opposite of active = color_target. Three phases prevent a
+  # half-applied state: 1) VALIDATE all rollback dirs exist (no writes),
+  # 2) WRITE upstreams only if all valid, 3) update state files AFTER reload.
   local fail=0
 
+  # 1. DOGRULAMA fazi — hicbir dosya yazilmaz.
+  # 1. VALIDATION phase — no files are written.
   while IFS= read -r line <&3; do
-    local dd svc active rollback_color rollback_dir
+    local dd svc rollback_color rollback_dir
     dd="$(field  "$line" 3)"
     svc="$(field "$line" 4)"
-    active="$(color_active "$svc")"
-
-    if [ "$active" = "blue" ]; then rollback_color="green"; else rollback_color="blue"; fi
+    rollback_color="$(color_target "$svc")"
     rollback_dir="$(dir_for "$dd" "$rollback_color")"
-
-    # Geri donulecek rengin dizini mevcut mu? / Does the rollback color directory exist?
     if ! target_dir_exists "$rollback_dir"; then
       echo "HATA / ERROR: Rollback hedefi bulunamadi (ilk deploy'dan once geri alinamaz)."
       echo "  No rollback target: ${rollback_dir} (cannot roll back before the first deploy)"
       fail=1
-      continue
     fi
+  done 3< <(services_lines)
 
+  if [ "$fail" -ne 0 ]; then
+    echo "Rollback iptal — hicbir degisiklik yapilmadi. / Rollback aborted — no changes were made."
+    return 1
+  fi
+
+  # 2. YAZMA fazi — tum upstream include'lar rollback rengine.
+  # 2. WRITE phase — all upstream includes to the rollback color.
+  while IFS= read -r line <&3; do
+    local svc rollback_color
+    svc="$(field "$line" 4)"
+    rollback_color="$(color_target "$svc")"
     nginx_write_upstream "$svc" "$rollback_color"
     echo "rollback upstream guncellendi / rollback upstream updated: ${svc} -> ${rollback_color}"
   done 3< <(services_lines)
 
-  if [ "$fail" -ne 0 ]; then
-    echo "Rollback basarisiz. Yukaridaki hataya bakin. / Rollback failed. See error above."
-    return 1
-  fi
-
+  # 3. Reload; basarisizsa set -e ile cikilir, state guncellenmez.
+  # 3. Reload; on failure set -e exits and state is left untouched.
   nginx_reload
+
+  # 4. Reload BASARILI: aktif renk durumunu rollback rengine yaz.
+  # 4. Reload SUCCEEDED: persist the rollback color as the active state.
+  while IFS= read -r line <&3; do
+    local svc rollback_color
+    svc="$(field "$line" 4)"
+    rollback_color="$(color_target "$svc")"
+    write_active_color "$svc" "$rollback_color"
+  done 3< <(services_lines)
+
   echo "rollback tamamlandi / rollback complete — trafik anlık cevirildi / traffic switched instantly"
 }
 

@@ -13,18 +13,63 @@
 
 | ID | Başlık | Önem | Dosya | Durum |
 |---|---|---|---|---|
+| ROOT-01 | .NET servisleri systemd'de root çalışıyordu (`User=` yok) | **YÜKSEK** | `setup-host.sh` | **GİDERİLDİ** (2026-07-09) |
+| STATE-01 | Blue-green aktif renk, nginx conf metninden grep ile okunuyordu | **ORTA-YÜKSEK** | `pipeline.sh` | **GİDERİLDİ** (2026-07-09) |
+| HOSTKEY-01 | `SSH_KNOWN_HOSTS` boşsa `ssh-keyscan` ile TOFU (MITM) | **ORTA** | `ssh-remote.sh` | **GİDERİLDİ** (2026-07-09) |
 | INJ-01 | `remote_sudo` komut enjeksiyonu (SERVICES alanları) | **ORTA** | `pipeline.sh` | **GİDERİLDİ** |
 | TMP-01 | Uzak geçici dosya yolu tahmin edilebilir (`/tmp/cicd-env-$$`) | **DÜŞÜK** | `pipeline.sh` | **GİDERİLDİ** |
-| PIN-01 | Action sürümlerinde SHA yerine etiket kullanımı | **DÜŞÜK-ORTA** | Tüm workflow'lar | **GİDERİLDİ** (Dependabot) |
+| PIN-01 | Action sürümlerinde SHA yerine etiket kullanımı | **DÜŞÜK-ORTA** | Tüm workflow'lar | **GİDERİLDİ** (SHA pin + Dependabot, 2026-07-09) |
+| FORK-01 | `pull_request` tetikleyicisi + self-hosted runner | **DÜŞÜK** | `continuous-integration.yml` | **GİDERİLDİ** (fork PR atlanıyor, 2026-07-09) |
+| DOC-01 | "byte-for-byte identical" fazla iddialı (test≠publish çıktısı) | **DÜŞÜK** | `README.md`, playbook | **GİDERİLDİ** (2026-07-09) |
+| LIC-01 | Public template'te LICENSE yok | **DÜŞÜK** | kök | **GİDERİLDİ** (MIT, 2026-07-09) |
+| SUDO-01 | Deploy kullanıcısı `NOPASSWD: ALL` (geniş sudo) | **ORTA** | `ssh-remote.sh` + docs | **AZALTILDI** (servisler artık root değil; kapsamlı-sudo helper gelecek çalışma) |
 | NX-01 | nginx socket izin modeli (cicd grubu, UMask) | **BİLGİ** | `setup-host.sh` | Kabul edilebilir (tasarım gereği) |
-| FORK-01 | `pull_request` tetikleyicisi + self-hosted runner | **DÜŞÜK** | `continuous-integration.yml` | Açık (private repo kabul edilebilir) |
 | CLEANUP-01 | SSH anahtar dosyası `SIGKILL`'de temizlenmiyor | **BİLGİ** | `ssh-remote.sh` | Açık (standart kısıt) |
 
-Tespit edilen **yüksek önem** bulgusu yoktur.
+**2026-07-09 güncellemesi:** Bağımsız bir ikinci inceleme, ilk denetimin (2026-07-08) atladığı iki önemli bulguyu ortaya çıkardı: servislerin root çalışması (ROOT-01) ve blue-green renk tespitinin kırılganlığı (STATE-01). İkisi de giderildi; ayrıntılar aşağıda.
 
 ---
 
 ## Bulgu Detayları
+
+### ROOT-01 — .NET Servisleri Root Çalışıyordu ✅ GİDERİLDİ
+**Önem:** YÜKSEK  
+**Dosya:** `setup-host.sh` (systemd birim şablonu)
+
+**Kanıt (önce):** Oluşturulan `[Service]` bloğunda `Group=cicd`, `UMask=0007` vardı fakat **`User=` yoktu**. `User=` tanımsızsa systemd birimi **root** olarak çalışır. Yani uygulamada (RCE, deserialization vb.) bir açık, doğrudan root ele geçirmeye dönüşebilirdi.
+
+**Uygulanan düzeltme:** Her servis için login'siz, sistem hesabı oluşturulur (`useradd --system --no-create-home --shell /usr/sbin/nologin --gid cicd cicd-<svc>`). Birim artık `User=cicd-<svc>` ile ve şu sertleştirme yönergeleriyle çalışır: `NoNewPrivileges=yes`, `ProtectSystem=full`, `ProtectHome=yes`, `PrivateTmp=yes`, `ProtectControlGroups=yes`, `ProtectKernelTunables=yes`, `RestrictSUIDSGID=yes`. Socket erişimi `Group=cicd` ile korunur (socket `0660 cicd-<svc>:cicd`; nginx `cicd` grubunda). `.env` artık `0640 cicd-<svc>:cicd` olarak yazılır ki düşük yetkili servis `EnvironmentFile` ile okuyabilsin.
+
+**Kalan not:** `cicd-<svc>` hesabının home'u yoktur; ASP.NET DataProtection anahtarlarını kalıcı saklamak gerekirse birime `ReadWritePaths=<dir>/keys` eklenip uygulamada KeyDir tanımlanmalıdır (birim şablonunda yorum olarak belirtildi).
+
+---
+
+### STATE-01 — Blue-Green Aktif Renk Tespiti Kırılgandı ✅ GİDERİLDİ
+**Önem:** ORTA-YÜKSEK  
+**Dosya:** `pipeline.sh` (`color_active`, `cmd_switch`, `cmd_rollback`)
+
+**Kanıt (önce):** Aktif renk, nginx upstream include dosyasının **metninden** okunuyordu: `grep -oE 'blue|green' <conf> | head -1`. Üç problem:
+- **(A) Yaz-sonra-reload sırası:** `cmd_switch` önce include dosyalarını yeni renge yazıp sonra `nginx -t && reload` yapıyordu. Reload başarısız olursa disk yeni rengi, çalışan nginx eski rengi gösteriyordu → bir sonraki deploy yanlış rengi okuyup **canlı rengin üzerine** yazabilirdi.
+- **(B) Yarım rollback:** `cmd_rollback` servis servis yazıp, sonraki serviste rollback dizini yoksa reload'dan önce duruyordu; bazı include dosyaları değişmiş, nginx reload edilmemiş kalıyordu.
+- **(C) İsim çakışması:** Servis adında `blue`/`green` geçerse (`blue-api`), `grep|head -1` gerçek renk yerine isimdeki kelimeyi okuyordu.
+
+**Uygulanan düzeltme:**
+- Aktif renk artık ayrı, tek-değerli **durum dosyasından** okunur: `/etc/nginx/cicd/<svc>.active` (kesin kaynak). `setup-host.sh` bunu `blue` ile başlatır. `grep blue|green` kaldırıldı → (C) çözüldü.
+- Durum dosyası **yalnızca başarılı `nginx reload`'dan sonra** yazılır (`write_active_color`). Reload başarısızsa `set -e` ile çıkılır, state güncellenmez → disk/canlı tutarlı kalır → (A) çözüldü.
+- `cmd_rollback` üç fazlı: (1) tüm rollback hedeflerini doğrula (yazma yok), (2) hepsi geçerliyse include'ları yaz, (3) reload sonrası state'i güncelle. Yarım uygulama olmaz → (B) çözüldü.
+- Include ve state yazımı hem uzak hem yerelde atomiktir (tmp'ye yaz + `mv`).
+
+---
+
+### HOSTKEY-01 — `SSH_KNOWN_HOSTS` Boşsa TOFU (MITM) ✅ GİDERİLDİ
+**Önem:** ORTA  
+**Dosya:** `ssh-remote.sh` (`ssh_remote_init`)
+
+**Kanıt (önce):** `SSH_KNOWN_HOSTS` verilmezse kod `ssh-keyscan` ile sunucu anahtarını **otomatik kabul** ediyordu (trust-on-first-use). İlk bağlantıda araya giren bir saldırgan (MITM) kendi anahtarını kabul ettirebilirdi. `StrictHostKeyChecking=yes` olması bu fallback yüzünden anlamsızlaşıyordu.
+
+**Uygulanan düzeltme:** `SSH_KNOWN_HOSTS` artık **zorunlu**. Boşsa uzak deploy net bir hatayla reddedilir (fail-closed) ve `ssh-keyscan` ile nasıl üretileceği gösterilir. `ssh-keyscan` fallback tamamen kaldırıldı.
+
+---
 
 ### INJ-01 — `remote_sudo` Komut Enjeksiyonu ✅ GİDERİLDİ
 **Önem:** ORTA  
@@ -56,7 +101,7 @@ Bu değer deploy_dir'e `/opt/myapp'` yerleştirerek `remote_sudo` string'ini kı
 
 ---
 
-### PIN-01 — Action Sürümlerinde SHA Yerine Etiket ✅ GİDERİLDİ (Dependabot)
+### PIN-01 — Action Sürümlerinde SHA Yerine Etiket ✅ GİDERİLDİ (SHA pin)
 **Önem:** DÜŞÜK-ORTA  
 **Dosya/Satır:** Tüm workflow'lar
 
@@ -77,11 +122,16 @@ uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 - Self-hosted runner ortamı, GitHub-hosted runner'a göre zaten kontrollüdür.
 - Bu template bir şablon reposudur; kullanıcı reposu bu action'ları kendi workflow'larında çalıştırır — GitHub-hosted runner kullanılıyorsa risk daha anlamlıdır.
 
-**Uygulanan düzeltme:** `templates/.github/dependabot.yml` eklendi (package-ecosystem: github-actions, haftalık tarama). Template'ten türetilen her repo otomatik olarak Dependabot PR'ları alır; action güncellemeleri gözden geçirilip merge edilebilir. Mevcut hiçbir kodu değiştirmez; sadece yeni bir config dosyası ekler.
+**Uygulanan düzeltme (2026-07-09):** Tüm resmi action'lar tam commit SHA'ya pinlendi ve okunabilirlik için `# vX.Y.Z` yorumu bırakıldı:
+- `actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2`
+- `actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0`
+- `actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2`
+
+Ek olarak `dependabot.yml` (haftalık) güncelleme PR'ları önermeye devam eder. Böylece hem tag-mutation'a karşı bağışıklık (immutable SHA) hem de düzenli güncelleme sağlanır.
 
 ---
 
-### FORK-01 — `pull_request` + Self-Hosted Runner
+### FORK-01 — `pull_request` + Self-Hosted Runner ✅ GİDERİLDİ
 **Önem:** DÜŞÜK  
 **Dosya/Satır:** `continuous-integration.yml`, satır 13–14
 
@@ -98,7 +148,13 @@ on:
 - Template genellikle **private** proje repolarında kullanılır; fork PR senaryosu tipik kullanımda yoktur.
 - GitHub, fork PR'lar için self-hosted runner'da gizli değişkenleri maskeler (Secrets fork'a açılmaz).
 
-**Önerilen düzeltme (opsiyonel, onayınızı bekliyor):** Eğer repo herkese açık olacaksa `pull_request_target` yerine `pull_request` kullanımı ve `environment: ci-review` gibi bir approval gate eklenebilir. Private repo için mevcut haliyle kabul edilebilir.
+**Uygulanan düzeltme (2026-07-09):** `build-test` job'ına iş-seviyesi koşul eklendi: fork'tan gelen PR'lar self-hosted runner'da **çalıştırılmaz**.
+```yaml
+if: >-
+  github.event_name != 'pull_request' ||
+  github.event.pull_request.head.repo.full_name == github.repository
+```
+Aynı repodan gelen PR'lar ve `main`'e push'lar normal çalışır; fork PR'ları atlanır (guvenilmeyen kod kalıcı runner'da/production ağına yakın koşmaz).
 
 ---
 
@@ -128,7 +184,7 @@ remote_sudo "mv '$tmp' '${dd}/.env' && chmod 600 '${dd}/.env' && ..."
 **Önem:** BİLGİ  
 **Dosya:** `setup-host.sh`
 
-**Model:** Her blue/green systemd birimi `Group=cicd`, `UMask=0007` ile çalışır. Kestrel bu ayarlarla Unix socket'i `0660 root:cicd` olarak oluşturur. nginx kullanıcısı (`www-data`/`nginx`) `usermod -aG cicd` ile `cicd` grubuna eklenmiştir; dolayısıyla nginx socket'e bağlanabilir. Diğer sistem kullanıcıları grupta değilse sokete erişemez.
+**Model:** Her blue/green systemd birimi `User=cicd-<svc>` (düşük yetkili), `Group=cicd`, `UMask=0007` ile çalışır (bkz. ROOT-01). Kestrel bu ayarlarla Unix socket'i `0660 cicd-<svc>:cicd` olarak oluşturur. nginx kullanıcısı (`www-data`/`nginx`) `usermod -aG cicd` ile `cicd` grubuna eklenmiştir; dolayısıyla nginx socket'e bağlanabilir. Diğer sistem kullanıcıları grupta değilse sokete erişemez.
 
 **Deploy kullanıcısı ve health kontrolü:** Deploy kullanıcısı `cicd` grubuna **eklenmez** (yüzey daraltılır). Bu nedenle pipeline'ın idle renk socket sağlık kontrolü (`pipeline.sh health`), socket'e `sudo` (root) ile erişir (`remote_sudo_stdin`). Root her socket'e erişebildiğinden bu doğru çalışır ve deploy kullanıcısının socket grubuna dahil edilmesine gerek kalmaz. Bu, zaten gereken `NOPASSWD: ALL` yetkisiyle tutarlıdır (bkz. operasyonel not).
 
@@ -177,21 +233,43 @@ trap ssh_remote_cleanup EXIT
 | Blue-green fail-safe | Health socket geçemezse nginx geçişi yapılmaz; canlı etkilenmez; job başarısız |
 | Validate adımı | Deploy başlangıcında SERVICES, SSH değişkenleri doğrulanıyor |
 | Socket izin modeli | `cicd` grubu, `UMask=0007` → socket `0660`; yalnızca nginx erişir |
+| Düşük yetkili servis | `User=cicd-<svc>` + `NoNewPrivileges`/`ProtectSystem`/`PrivateTmp` sertleştirme |
+| Aktif renk kesin kaynağı | Ayrı state dosyası; yalnızca başarılı reload sonrası yazım (atomik) |
+| Şablonun kendi CI'ı | github-hosted runner'da ShellCheck + actionlint self-test |
 
 ---
 
 ## Sonuç
 
-Şablon genel olarak **güvenli** bir tasarıma sahiptir. Kullanıcı onayıyla üç bulgu giderildi:
+Şablon genel olarak **güvenli** bir tasarıma sahiptir. İlk denetimdeki (2026-07-08) bulgulara ek olarak, bağımsız ikinci inceleme (2026-07-09) iki önemli bulgu daha ortaya çıkardı; hepsi giderildi:
 
+**2026-07-08:**
 - **INJ-01 (ORTA):** `validate_services()` ile SERVICES alanları whitelist doğrulamasından geçiyor.
 - **TMP-01 (DÜŞÜK):** Uzak geçici dosya `mktemp` ile rassal isim alıyor.
-- **PIN-01 (DÜŞÜK-ORTA, kısmi):** `dependabot.yml` action güncellemelerini otomatik izler. **Not:** Bu tam bir azaltma değildir — action'lar hâlâ `@v4` etiket ile pinlenmiştir; SLSA düzeyinde katı güvenlik için tam commit SHA pinleme ayrıca yapılmalıdır. Dependabot yalnızca güncelleme PR'ları önerir.
 
-**Açık / kabul edilebilir bulgular:**
+**2026-07-09:**
+- **ROOT-01 (YÜKSEK):** Servisler artık `User=cicd-<svc>` (düşük yetkili) + systemd sertleştirme ile çalışıyor; root değil.
+- **STATE-01 (ORTA-YÜKSEK):** Blue-green aktif renk ayrı state dosyasından okunuyor; state yalnızca başarılı reload sonrası yazılıyor; rollback üç fazlı (atomik).
+- **HOSTKEY-01 (ORTA):** `SSH_KNOWN_HOSTS` zorunlu; `ssh-keyscan` TOFU fallback kaldırıldı.
+- **PIN-01 (DÜŞÜK-ORTA):** Tüm action'lar tam commit SHA'ya pinlendi (+ Dependabot).
+- **FORK-01 (DÜŞÜK):** Fork PR'ları self-hosted runner'da çalıştırılmıyor.
+- **DOC-01 (DÜŞÜK):** "byte-for-byte identical" iddiası "aynı doğrulanmış commit" olarak düzeltildi.
+- **LIC-01 (DÜŞÜK):** Kök dizine MIT LICENSE eklendi.
+- **CI (olgunluk):** Blueprint'in kendi self-CI'ı eklendi (`.github/workflows/blueprint-selftest.yml`) — github-hosted runner'da ShellCheck + actionlint.
+
+**Kısmi / kabul edilebilir bulgular:**
+- **SUDO-01 (ORTA → azaltıldı):** Uygulama root değil; deploy kullanıcısının geniş sudo'su ise kapsamlı-sudo helper ile gelecekte daraltılacak (bkz. SUDO-01).
 
 - **NX-01 (BİLGİ):** nginx socket izin modeli `cicd` grubu + UMask tasarımı kabul edilebilir; `cicd` grubunu dar tutun.
 - **FORK-01 (DÜŞÜK):** `pull_request` + self-hosted runner riski yalnızca **public** repo'da anlamlıdır. Bu şablon private proje repoları için tasarlanmıştır; public kullanımda PR'lar için ek bir onay kapısı önerilir.
 - **CLEANUP-01 (BİLGİ):** `SIGKILL` sonrası geçici SSH anahtar dosyası bilinen bir kısıttır; `chmod 600` ve izole runner çalışma alanı ile pratik risk düşüktür.
 
-**Operasyonel not (güvenlik dışı ama kritik):** `remote_sudo` komutları hedef sunucuda `sudo bash -c "..."` ile çalışır; bu yüzden deploy kullanıcısı **tam `NOPASSWD: ALL`** yetkisine ihtiyaç duyar (dar komut whitelist'i çalışmaz). Bu, tasarımın bilinçli bir sonucudur ve dokümantasyonda (README + company-setup) belirtilmiştir.
+### SUDO-01 — Deploy Kullanıcısı `NOPASSWD: ALL` ⚠️ AZALTILDI (kısmi)
+**Önem:** ORTA  
+**Dosya:** `ssh-remote.sh` (`remote_sudo`) + docs
+
+**Kanıt:** `remote_sudo` komutları hedef sunucuda `sudo bash -c "..."` ile çalışır; bu yüzden deploy kullanıcısı **tam `NOPASSWD: ALL`** yetkisine ihtiyaç duyar. Deploy SSH anahtarını ele geçiren biri sunucuda root olabilir.
+
+**Uygulanan azaltma (2026-07-09):** En büyük türev risk kapatıldı — **uygulama artık root çalışmıyor** (ROOT-01). Yani bir uygulama açığı otomatik root vermiyor; root yolu yalnızca deploy pipeline'ının kendisinden geçiyor.
+
+**Kalan risk ve öneri (gelecek çalışma):** `sudo bash -c` modeli dar bir komut whitelist'i ile bağdaşmaz. Kök çözüm, sabit bir root-sahipli **yardımcı script** (ör. `install-file`, `restart <unit>`, `nginx-reload`, `set-active <svc> <color>` alt-komutları) yazıp sudoers'ı yalnızca o script'e izin verecek şekilde kısıtlamaktır. Bu, `ssh-remote.sh` + `pipeline.sh` + `setup-host.sh` üçlüsünde daha büyük bir refactor ve **canlı sunucuda test** gerektirdiğinden, kör (test edilmeden) uygulanması "yarım/kırık iş" riski taşır; ayrı bir görev olarak bırakıldı. Ara önlem: deploy kullanıcısını **yalnızca deploy'a adanmış** bir host/kullanıcı yapın ve SSH anahtarını dar tutun.

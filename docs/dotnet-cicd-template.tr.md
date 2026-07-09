@@ -150,7 +150,7 @@ Her iki modda sonunda socket üzerinden sağlık kontrolü koşulur.
 
 | İlke | Nasıl uygulanır | Kazanç |
 |---|---|---|
-| Build-once, deploy-many | `ci_artifact` kaynağı (varsayılan) | Test edilen ile yayınlanan birebir aynı |
+| Build-once, deploy-many | `ci_artifact` kaynağı (varsayılan) | Yayınlanan, testten geçen commit ile aynı commit'ten gelir (köken/commit garantisi; bayt düzeyinde değil) |
 | Köken doğrulama (provenance) | `ci_artifact` commit'i == deploy commit'i | Test edilen commit ile yayınlanan commit aynı |
 | Onay kapısı | `environment: production` + reviewer/self-review/`main` | İzinsiz üretim dağıtımı engellenir |
 | En az yetki (least privilege) | `permissions: contents: read` (+ deploy'da `actions: read`) | Token'ın etki alanı daraltılır |

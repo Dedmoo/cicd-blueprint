@@ -7,8 +7,9 @@
 # Sourced by pipeline.sh when DEPLOY_TARGET=remote.
 #
 # Gerekli ortam degiskenleri / Required env:
-#   SSH_HOST, SSH_USER, SSH_PRIVATE_KEY
-# Opsiyonel / Optional: SSH_PORT (22), SSH_KNOWN_HOSTS
+#   SSH_HOST, SSH_USER, SSH_PRIVATE_KEY, SSH_KNOWN_HOSTS
+#   (SSH_KNOWN_HOSTS artik zorunlu — MITM korumasi / now required — MITM protection)
+# Opsiyonel / Optional: SSH_PORT (22)
 
 set -euo pipefail
 
@@ -59,22 +60,25 @@ ssh_remote_init() {
     hostspec="[${SSH_HOST}]:${SSH_PORT}"
   fi
 
-  if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
-    # Her pipeline adiminda yeniden yazma; host zaten biliniyorsa atla.
-    # Do not re-append on every pipeline step; skip if the host is already known.
-    if ! ssh-keygen -F "$hostspec" -f "$known_hosts" >/dev/null 2>&1; then
-      printf '%s\n' "$SSH_KNOWN_HOSTS" >> "$known_hosts"
-    fi
-  else
-    # Host anahtari zaten biliniyorsa tekrar taramayiz. Boylece her pipeline adiminin
-    # ayri ayri ssh-keyscan (kimlik dogrulamasiz baglanti) acmasi ve modern sshd'nin
-    # PerSourcePenalties (noauth) korumasini tetiklemesi engellenir.
-    # Skip re-scanning when the host key is already known. This avoids one no-auth
-    # ssh-keyscan connection per pipeline step, which can trip a modern sshd's
-    # PerSourcePenalties (noauth) protection and cause "connection reset" errors.
-    if ! ssh-keygen -F "$hostspec" -f "$known_hosts" >/dev/null 2>&1; then
-      ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> "$known_hosts" 2>/dev/null || true
-    fi
+  # SSH_KNOWN_HOSTS ZORUNLUDUR. Onceki surumlerde bos birakilirsa ssh-keyscan ile
+  # anahtar otomatik kabul ediliyordu (TOFU) — bu, ilk baglantida MITM'e acikti.
+  # Artik guvenli host parmak izi onceden saglanmadan uzak deploy REDDEDILIR.
+  # SSH_KNOWN_HOSTS is REQUIRED. Older versions auto-accepted the key via ssh-keyscan
+  # (TOFU) when left empty — that was open to first-connection MITM. Remote deploy is
+  # now REFUSED unless a trusted host fingerprint is supplied up front.
+  if [ -z "${SSH_KNOWN_HOSTS:-}" ]; then
+    echo "HATA / ERROR: SSH_KNOWN_HOSTS tanimli degil / not set."
+    echo "  Uzak deploy icin sunucu host anahtari onceden verilmelidir (MITM korumasi)."
+    echo "  Remote deploy requires the server host key up front (MITM protection)."
+    echo "  Uretmek icin / generate with: ssh-keyscan -p ${SSH_PORT} ${SSH_HOST}"
+    echo "  Ciktinin tamamini repo Variable 'SSH_KNOWN_HOSTS' olarak kaydedin."
+    echo "  Save the full output as the repo Variable 'SSH_KNOWN_HOSTS'."
+    exit 1
+  fi
+  # Her pipeline adiminda yeniden yazma; host zaten biliniyorsa atla.
+  # Do not re-append on every pipeline step; skip if the host is already known.
+  if ! ssh-keygen -F "$hostspec" -f "$known_hosts" >/dev/null 2>&1; then
+    printf '%s\n' "$SSH_KNOWN_HOSTS" >> "$known_hosts"
   fi
   chmod 600 "$known_hosts" 2>/dev/null || true
 

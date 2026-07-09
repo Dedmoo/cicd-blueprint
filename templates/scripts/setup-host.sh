@@ -105,6 +105,17 @@ printf '%s\n' "${SERVICES:?SERVICES ortam degiskeni tanimli degil / SERVICES env
 
       echo "Servis kuruluyor / setting up service: $svc (port $port)"
 
+      # --- Dusuk yetkili servis kullanicisi / low-privilege service account ---
+      # Uygulama root yerine login'siz, sistem kullanicisiyla calisir (en az yetki).
+      # Birincil grup cicd: socket'e (0660 svc_user:cicd) ve .env'e (0640) erisim.
+      # The app runs as a login-less system user instead of root (least privilege).
+      # Primary group cicd: access to the socket (0660 svc_user:cicd) and .env (0640).
+      svc_user="cicd-${svc}"
+      if ! id "$svc_user" >/dev/null 2>&1; then
+        useradd --system --no-create-home --shell /usr/sbin/nologin --gid cicd "$svc_user"
+        echo "  servis kullanicisi olusturuldu / service user created: $svc_user"
+      fi
+
       # Her renk icin systemd birimi / systemd unit for each color
       for color in blue green; do
         unit_name="${svc}-${color}"
@@ -121,10 +132,21 @@ WorkingDirectory=${unit_dir}
 ExecStart=${DOTNET_PATH} ${unit_dir}/${dll} --urls http://unix:${sock_path}
 Restart=on-failure
 RestartSec=5
+# Dusuk yetkili kullanici: uygulama root DEGIL, ozel servis hesabiyla calisir.
+# Low-privilege user: the app runs as a dedicated account, NOT root.
+User=${svc_user}
 # Grup ve UMask: socket 0660 olarak olusturulur (cicd grubu erisebilir).
 # Group and UMask: socket is created as 0660 (accessible by cicd group).
 Group=cicd
 UMask=0007
+# systemd sertlestirme / systemd hardening:
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+ProtectControlGroups=yes
+ProtectKernelTunables=yes
+RestrictSUIDSGID=yes
 # RuntimeDirectory: her start/stop dongusu icin /run/cicd/ olusturur.
 # RuntimeDirectoryPreserve: diger renk calisirken dizin silinmez.
 # RuntimeDirectory: creates /run/cicd/ on each start/stop cycle.
@@ -134,6 +156,11 @@ RuntimeDirectoryMode=0750
 RuntimeDirectoryPreserve=yes
 Environment=ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENV}
 Environment=DOTNET_USE_POLLING_FILE_WATCHER=1
+# Not: svc_user'in home'u yoktur; DataProtection anahtarlarini kalici saklamak
+# gerekirse KeyDir tanimlayip ReadWritePaths ekleyin (ornek asagida yorumda).
+# Note: svc_user has no home; to persist DataProtection keys define a KeyDir and
+# add ReadWritePaths (see the commented example below).
+# ReadWritePaths=${unit_dir}/keys
 # Gizli ortam degiskenleri — deploy'da yazilir; yoksa yok sayilir
 # Secret env vars — written at deploy; ignored if absent
 EnvironmentFile=-${unit_dir}/.env
@@ -144,7 +171,7 @@ UNIT
 
         systemctl daemon-reload
         systemctl enable "$unit_name"
-        echo "  systemd birimi / unit: ${unit_name} — socket: ${sock_path}"
+        echo "  systemd birimi / unit: ${unit_name} — socket: ${sock_path} — user: ${svc_user}"
       done
 
       # --- nginx upstream include (varsayilan: blue) ---
@@ -156,6 +183,14 @@ upstream cicd_${svc} {
     keepalive 32;
 }
 NGINX
+
+      # --- aktif renk durum dosyasi (kesin kaynak) / active-color state file ---
+      # pipeline.sh aktif rengi bu dosyadan okur; upstream metnini grep'lemez.
+      # Baslangic degeri upstream varsayilaniyla (blue) tutarli olmali.
+      # pipeline.sh reads the active color from this file; it does not grep the
+      # upstream text. Initial value must match the upstream default (blue).
+      printf 'blue\n' > "${CICD_DIR}/${svc}.active"
+      chmod 644 "${CICD_DIR}/${svc}.active"
 
       # --- nginx server blogu / server block ---
       # upstream include bu dosyadan cagrilir; pipeline sadece upstream include'i degistirir.
